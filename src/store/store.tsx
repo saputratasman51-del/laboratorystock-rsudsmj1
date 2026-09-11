@@ -45,9 +45,12 @@ export type StockRequest = {
 export type POStatus = "Draft" | "Diajukan" | "Disetujui" | "Dikirim" | "Diterima";
 export type POLine = { itemId: string; qty: number };
 export type ReceiptLine = { itemId: string; qty: number; lot: string; expired: string };
+/** Rincian penerimaan aktual per item — selisih dipesan vs diterima (catatan back-order) */
+export type POReceipt = { itemId: string; ordered: number; received: number };
 export type PO = {
   id: string; po: string; date: string; vendorId: string; method: string; status: POStatus;
   value: number; eta: string; lines: POLine[];
+  receivedLines?: POReceipt[]; sj?: string;
 };
 export type Vendor = {
   id: string; name: string; category: string; pic: string; phone: string; email: string;
@@ -122,6 +125,11 @@ const SEED: State = {
     { id: "PO4", po: "PO/2025/03/PK-0149", date: daysFromNow(-1), vendorId: "V-04", method: "E-Katalog", status: "Diajukan", value: 115400000, eta: "14 Mar", lines: [{ itemId: "ITM-002", qty: 12 }, { itemId: "ITM-004", qty: 6 }] },
     { id: "PO5", po: "PO/2025/03/CITO-003", date: daysFromNow(-1), vendorId: "V-05", method: "Pengadaan Langsung", status: "Dikirim", value: 18500000, eta: "Hari ini (CITO)", lines: [{ itemId: "ITM-003", qty: 10 }] },
     { id: "PO6", po: "PO/2025/03/PK-0150", date: daysFromNow(0), vendorId: "V-01", method: "E-Katalog", status: "Draft", value: 19500000, eta: "-", lines: [{ itemId: "ITM-003", qty: 20 }] },
+    {
+      id: "PO7", po: "PO/2025/02/PK-0135", date: daysFromNow(-22), vendorId: "V-04", method: "E-Katalog",
+      status: "Diterima", value: 37000000, eta: "Selesai", lines: [{ itemId: "ITM-004", qty: 20 }],
+      sj: "SJ-PK0135-V04", receivedLines: [{ itemId: "ITM-004", ordered: 20, received: 16 }],
+    },
   ],
   vendors: [
     { id: "V-01", name: "PT Kimia Farma Trading", category: "Reagensia & KPO", pic: "Rina Marlina", phone: "021-450-8899", email: "sales@kftd.co.id", ekatalog: true, rating: 4.8 },
@@ -194,19 +202,36 @@ function reducer(s: State, a: Action): State {
         id: uid(), itemId: l.itemId, lot: l.lot.trim(), qty: l.qty, expired: l.expired,
         supplier: vendor?.name ?? "-", receivedAt: todayISO(),
       }));
-      const detail = a.lines
-        .map((l) => {
-          const item = s.items.find((i) => i.id === l.itemId);
-          const ordered = po.lines.find((o) => o.itemId === l.itemId)?.qty ?? 0;
-          const dev = ordered && l.qty !== ordered ? ` (pesan ${ordered}, terima ${l.qty})` : "";
-          return `${item?.name} ${l.qty} ${item?.unit ?? ""} lot ${l.lot.trim()} exp ${l.expired}${dev}`;
-        })
-        .join("; ");
+      /* Rekam penerimaan aktual per item — termasuk kekurangan belum diterima */
+      const receivedLines: POReceipt[] = po.lines.map((o) => ({
+        itemId: o.itemId,
+        ordered: o.qty,
+        received: a.lines.filter((l) => l.itemId === o.itemId).reduce((n, l) => n + l.qty, 0),
+      }));
+      a.lines
+        .filter((l) => !po.lines.some((o) => o.itemId === l.itemId))
+        .forEach((l) => {
+          receivedLines.push({ itemId: l.itemId, ordered: 0, received: l.qty });
+        });
+      const missing = receivedLines.reduce((n, l) => n + Math.max(0, l.ordered - l.received), 0);
+      const detail =
+        a.lines
+          .map((l) => {
+            const item = s.items.find((i) => i.id === l.itemId);
+            const ordered = po.lines.find((o) => o.itemId === l.itemId)?.qty ?? 0;
+            const dev = ordered && l.qty !== ordered ? ` (pesan ${ordered}, terima ${l.qty})` : "";
+            return `${item?.name} ${l.qty} ${item?.unit ?? ""} lot ${l.lot.trim()} exp ${l.expired}${dev}`;
+          })
+          .join("; ") + (missing > 0 ? ` · CATATAN: ${missing} unit belum diterima dari vendor` : "");
       return {
         ...s, items,
         batches: [...newBatches, ...s.batches],
-        pos: s.pos.map((p) => (p.id === a.poId ? { ...p, status: "Diterima" } : p)),
-        audit: log(s, "Penerimaan", "Barang diterima gudang", `${po.po} · SJ ${a.sj}: ${detail}`),
+        pos: s.pos.map((p) => (p.id === a.poId ? { ...p, status: "Diterima", receivedLines, sj: a.sj } : p)),
+        audit: log(
+          s, "Penerimaan",
+          missing > 0 ? "Barang diterima sebagian" : "Barang diterima gudang",
+          `${po.po} · SJ ${a.sj}: ${detail}`
+        ),
       };
     }
     case "ADD_USAGE": {

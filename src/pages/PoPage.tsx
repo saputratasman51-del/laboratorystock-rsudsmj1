@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, ArrowRight, Send, CheckCheck, Truck, Package, ShoppingBag, Trash2 } from "lucide-react";
+import { Plus, ArrowRight, Send, CheckCheck, Truck, Package, ShoppingBag, Trash2, CircleAlert } from "lucide-react";
 import {
   Card, CardTitle, Badge, Btn, Modal, Field, inputCls, Empty, useArmable,
   thCls, tdCls, tableCls, theadCls, trCls,
@@ -69,7 +69,7 @@ export default function PoPage({ navigate }: { navigate: NavigateFn }) {
       </Card>
 
       <Card>
-        <CardTitle title="Daftar Purchase Order" desc="Klik aksi untuk memajukan status; hapus dua-klik untuk membuang register" />
+        <CardTitle title="Daftar Purchase Order" desc="PO selesai menampilkan rincian penerimaan aktual & catatan kekurangan belum diterima" />
         <div className="overflow-x-auto rounded-lg ring-1 ring-surface-container">
           <table className={tableCls}>
             <thead className={theadCls}>
@@ -97,17 +97,80 @@ export default function PoPage({ navigate }: { navigate: NavigateFn }) {
                       <div className="max-w-48 truncate font-medium">{vendorOf(p.vendorId)?.name ?? "-"}</div>
                       <Badge tone="neutral">{p.method}</Badge>
                     </td>
-                    <td className={cn(tdCls, "max-w-56")}>
-                      <span className="block truncate font-sans text-body-sm text-on-surface-variant">
-                        {p.lines.map((l) => `${itemOf(l.itemId)?.name ?? "-"} × ${l.qty}`).join("; ")}
-                      </span>
+                    <td className={cn(tdCls, "min-w-52 max-w-64")}>
+                      {p.status === "Diterima" && p.receivedLines ? (
+                        <div className="flex flex-col gap-1">
+                          {p.receivedLines.map((l, i) => {
+                            const diff = l.received - l.ordered;
+                            const extra = l.ordered === 0;
+                            return (
+                              <div key={i} className="flex flex-wrap items-center gap-1.5">
+                                <span className="max-w-40 truncate font-sans text-body-sm text-on-surface-variant">
+                                  {itemOf(l.itemId)?.name ?? "-"}
+                                </span>
+                                {extra ? (
+                                  <span className="font-mono text-data-mono-sm font-semibold text-on-surface">+{l.received}</span>
+                                ) : (
+                                  <span className="font-mono text-data-mono-sm font-semibold text-on-surface">
+                                    {l.received}/{l.ordered}
+                                  </span>
+                                )}
+                                {extra ? (
+                                  <span className="rounded-full bg-secondary-container px-1.5 py-px font-sans text-[10px] font-bold text-on-secondary-fixed-variant">
+                                    di luar PO
+                                  </span>
+                                ) : diff === 0 ? (
+                                  <span className="rounded-full bg-primary-fixed px-1.5 py-px font-sans text-[10px] font-bold text-on-primary-fixed">
+                                    lengkap
+                                  </span>
+                                ) : diff < 0 ? (
+                                  <span className="rounded-full bg-error-container px-1.5 py-px font-sans text-[10px] font-bold text-on-error-container">
+                                    kurang {Math.abs(diff)}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-tertiary-fixed px-1.5 py-px font-sans text-[10px] font-bold text-on-tertiary-fixed-variant">
+                                    lebih +{diff}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {(() => {
+                            const missing = p.receivedLines.reduce((n, l) => n + Math.max(0, l.ordered - l.received), 0);
+                            return missing > 0 ? (
+                              <span className="mt-0.5 flex items-center gap-1 font-sans text-[11px] font-semibold text-error">
+                                <CircleAlert className="h-3.5 w-3.5" />
+                                Catatan: {missing} unit belum diterima{p.sj ? ` · SJ ${p.sj}` : ""}
+                              </span>
+                            ) : p.sj ? (
+                              <span className="mt-0.5 font-sans text-[11px] font-normal text-on-surface-variant">SJ {p.sj}</span>
+                            ) : null;
+                          })()}
+                        </div>
+                      ) : (
+                        <span className="block truncate font-sans text-body-sm text-on-surface-variant">
+                          {p.lines.map((l) => `${itemOf(l.itemId)?.name ?? "-"} × ${l.qty}`).join("; ")}
+                        </span>
+                      )}
                     </td>
                     <td className={cn(tdCls, "text-right font-mono text-data-mono-sm")}>{fmtIDR(p.value)}</td>
                     <td className={tdCls}><Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge></td>
                     <td className={cn(tdCls, "text-right")}>
                       <div className="inline-flex items-center justify-end gap-1.5">
                         {p.status === "Diterima" ? (
-                          <Badge tone="ok"><CheckCheck className="h-3 w-3" /> Selesai</Badge>
+                          <div className="inline-flex flex-col items-end gap-1">
+                            <Badge tone="ok"><CheckCheck className="h-3 w-3" /> Selesai</Badge>
+                            {(() => {
+                              const missing = (p.receivedLines ?? []).reduce(
+                                (n, l) => n + Math.max(0, l.ordered - l.received), 0
+                              );
+                              return missing > 0 ? (
+                                <span className="font-sans text-[11px] font-semibold text-error">
+                                  Sisa {missing} belum diterima
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
                         ) : p.status === "Dikirim" ? (
                           <Btn tone="soft" icon={NextIcon} className="h-8 px-2.5" onClick={() => navigate("penerimaan-barang")}>
                             {next.label}
