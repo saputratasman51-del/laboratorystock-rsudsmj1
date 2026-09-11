@@ -1,38 +1,18 @@
 import { useState, type FormEvent } from "react";
 import {
   User, Lock, Eye, EyeOff, LogIn, Loader2, ShieldCheck, CircleAlert,
-  Thermometer, PackageCheck, FileKey2,
+  PackageCheck, ClipboardCheck, FileKey2,
 } from "lucide-react";
 import { useAuth } from "../store/auth";
 import { useStore } from "../store/store";
 import { useToast } from "../components/Toast";
+import LogoImg from "../components/Logo";
 import { cn } from "../utils/cn";
-
-function LogoMark({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
-      <defs>
-        <linearGradient id="lg-login" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#0f766e" />
-          <stop offset="1" stopColor="#005c55" />
-        </linearGradient>
-      </defs>
-      <rect width="40" height="40" rx="9" fill="url(#lg-login)" />
-      <path
-        d="M15.5 7h9v4.2h-2.4v5l5.9 10.6A5.4 5.4 0 0 1 23.2 35h-6.4a5.4 5.4 0 0 1-4.8-8.2l5.9-10.6v-5h-2.4V7Z"
-        fill="#ffffff" opacity="0.95"
-      />
-      <path d="M13.4 26.5h13.2l1.9 3.4A3.4 3.4 0 0 1 25.4 33H14.6a3.4 3.4 0 0 1-3.1-3.1l1.9-3.4Z" fill="#9cf2e8" />
-      <circle cx="30.5" cy="9.5" r="5.5" fill="#ffffff" />
-      <path d="M30.5 7v5M28 9.5h5" stroke="#005c55" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 const FEATURES = [
   { icon: ShieldCheck, text: "Jejak audit immutable sesuai standar KARS & ISO 15189" },
-  { icon: PackageCheck, text: "Verifikasi penerimaan barang berbasis FEFO & cold-chain" },
-  { icon: Thermometer, text: "Monitoring suhu chiller & freezer terekam real-time" },
+  { icon: PackageCheck, text: "Penerimaan barang dengan jumlah aktual yang dapat disesuaikan" },
+  { icon: ClipboardCheck, text: "Pencatatan & pelaporan khusus internal Lab PK dan UPD" },
 ];
 
 export default function LoginPage() {
@@ -82,12 +62,10 @@ export default function LoginPage() {
         <div className="pointer-events-none absolute -bottom-32 -left-20 h-96 w-96 rounded-full bg-black/10 blur-3xl" />
 
         <div className="relative flex items-center gap-3">
-          <div className="rounded-xl bg-white/95 p-1.5 shadow-lg">
-            <LogoMark className="h-9 w-9" />
-          </div>
+          <LogoImg className="h-12 w-12 rounded-xl" />
           <div>
             <div className="font-sans text-title-sm text-white">Labstock RSUD SMJ</div>
-            <div className="font-sans text-caption uppercase tracking-wider text-white/70">Katalog &amp; Logistik</div>
+            <div className="font-sans text-caption uppercase tracking-wider text-white/70">Logistik Internal Lab</div>
           </div>
         </div>
 
@@ -95,15 +73,15 @@ export default function LoginPage() {
           <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 backdrop-blur-sm">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#9cf2e8]" />
             <span className="font-sans text-caption font-semibold uppercase tracking-wider text-white">
-              Sistem Persediaan Laboratorium
+              Pencatatan &amp; Pelaporan Internal
             </span>
           </div>
           <h1 className="font-sans text-[34px] font-bold leading-[1.15] tracking-tight text-white">
-            Kontrol stok reagensia yang aman &amp; tertelusur.
+            Kontrol stok laboratorium yang aman &amp; tertelusur.
           </h1>
           <p className="mt-3 font-sans text-body-md text-white/75">
-            Satu platform terpadu untuk katalog, batch, suhu rantai dingin, pengadaan E-Katalog,
-            hingga bukti kepatuhan akreditasi.
+            Satu platform internal untuk katalog, batch, pengadaan E-Katalog, pemakaian,
+            hingga bukti kepatuhan akreditasi Lab Patologi Klinik &amp; UPD.
           </p>
           <div className="mt-7 flex flex-col gap-3">
             {FEATURES.map((f) => (
@@ -118,7 +96,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative flex items-center justify-between font-sans text-caption text-white/70">
-          <span>v2.4 · RSUD SMJ 1 · Gudang Farmasi Lt. 1</span>
+          <span>v2.4 · RSUD SMJ · Lab Patologi Klinik &amp; UPD</span>
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="h-4 w-4" /> Terakreditasi KARS &amp; ISO 15189
           </span>
@@ -129,10 +107,10 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center p-5 md:p-10">
         <div className="w-full max-w-md animate-rise">
           <div className="mb-7 flex items-center gap-3 lg:hidden">
-            <LogoMark className="h-10 w-10" />
+            <LogoImg className="h-11 w-11" />
             <div>
               <div className="font-sans text-title-sm text-on-surface">Labstock RSUD SMJ</div>
-              <div className="font-sans text-caption uppercase tracking-wider text-on-surface-variant">Katalog &amp; Logistik</div>
+              <div className="font-sans text-caption uppercase tracking-wider text-on-surface-variant">Logistik Internal Lab</div>
             </div>
           </div>
 
@@ -142,7 +120,7 @@ export default function LoginPage() {
               <h2 className="font-sans text-headline-lg tracking-tight text-on-surface">Masuk ke Sistem</h2>
             </div>
             <p className="mb-6 font-sans text-body-sm text-on-surface-variant">
-              Akses terbatas untuk petugas terotorisasi. Gunakan akun yang diberikan administrator.
+              Akses terbatas untuk petugas laboratorium terotorisasi. Gunakan akun yang diberikan administrator.
             </p>
 
             {error && (

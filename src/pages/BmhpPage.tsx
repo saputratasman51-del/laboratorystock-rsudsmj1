@@ -88,7 +88,7 @@ export default function BmhpPage() {
                 icon={Minus}
                 disabled={i.stock === 0}
                 onClick={() => {
-                  const r = addUsage(i.id, 1, "Lab — Ambil Cepat", "Pengambilan cepat via BMHP");
+                  const r = addUsage(i.id, 1, "Laboratorium Patologi Klinik", "Pengambilan cepat via BMHP");
                   push(
                     r.ok
                       ? { title: `${i.name} diambil 1 ${i.unit}`, desc: `Stok tersisa ${i.stock - 1} ${i.unit}. Tercatat di audit.`, tone: "success" }
@@ -107,8 +107,8 @@ export default function BmhpPage() {
       <Card>
         <CardTitle title="Catatan Operasional" />
         <p className="font-sans text-body-sm text-on-surface-variant">
-          Pengambilan cepat otomatis memotong stok dan tercatat sebagai pemakaian unit &quot;Lab — Ambil Cepat&quot;.
-          Untuk distribusi ke unit layanan lain gunakan menu Pencatatan Pemakaian Harian.
+          Pengambilan cepat otomatis memotong stok dan tercatat sebagai pemakaian Laboratorium Patologi Klinik.
+          Untuk unit lainnya (termasuk UPD) gunakan menu Pencatatan Pemakaian Harian.
         </p>
       </Card>
     </div>

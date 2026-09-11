@@ -1,7 +1,13 @@
-import { useState } from "react";
-import { BadgeCheck, Boxes, Ban, CheckCheck, Truck, ReceiptText, Thermometer, Package, Snowflake, ScanLine } from "lucide-react";
-import { Card, CardTitle, Badge, Btn, Empty, thCls, tdCls, tableCls, theadCls, trCls } from "../components/ui";
-import { useStore, daysFromNow, fmtDate, fmtIDR } from "../store/store";
+import { useEffect, useMemo, useState } from "react";
+import {
+  BadgeCheck, Boxes, Ban, CheckCheck, Truck, Package, Plus, X,
+  PenLine, ScanLine, CircleAlert,
+} from "lucide-react";
+import {
+  Card, CardTitle, Badge, Btn, Empty, Field, inputCls,
+  thCls, tdCls, tableCls, theadCls, trCls,
+} from "../components/ui";
+import { useStore, daysFromNow, fmtIDR, type ReceiptLine } from "../store/store";
 import { useToast } from "../components/Toast";
 import QRScannerModal from "../components/QRScannerModal";
 import type { ScanHit } from "../utils/scan";
@@ -9,20 +15,65 @@ import { cn } from "../utils/cn";
 
 const CHECKS = [
   { id: "seal", title: "Integritas Fisik & Segel", desc: "Kemasan utuh, tidak bocor, segel pabrik valid." },
-  { id: "temp", title: "Suhu Kedatangan Sesuai (2–8°C)", desc: "Datalogger terverifikasi, ice gel masih dingin." },
   { id: "fefo", title: "Kepatuhan FEFO > 18 Bulan", desc: "Masa simpan memenuhi standar akreditasi KARS." },
   { id: "coa", title: "CoA & MSDS Terlampir", desc: "Sertifikat analisis batch pabrikan otentik." },
+  { id: "doc", title: "Dokumen Pengiriman Lengkap", desc: "Surat jalan & faktur sesuai dengan isi kiriman." },
 ];
+
+type EditLine = ReceiptLine & { key: string; ordered: number };
+const uid = () => Math.random().toString(36).slice(2, 9).toUpperCase();
 
 export default function PenerimaanPage() {
   const { state, itemOf, vendorOf, confirmReceipt } = useStore();
   const push = useToast();
 
-  const incoming = state.pos.filter((p) => p.status === "Dikirim");
+  const incoming = useMemo(() => state.pos.filter((p) => p.status === "Dikirim"), [state.pos]);
   const [selId, setSelId] = useState<string>(incoming[0]?.id ?? "");
   const [checks, setChecks] = useState<Record<string, boolean>>(Object.fromEntries(CHECKS.map((c) => [c.id, true])));
   const [doneId, setDoneId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [sj, setSj] = useState("");
+  const [lines, setLines] = useState<EditLine[]>([]);
+
+  const activeId = doneId ? "" : incoming.find((p) => p.id === selId)?.id ?? incoming[0]?.id ?? "";
+  const po = incoming.find((p) => p.id === activeId);
+  const donePO = doneId ? state.pos.find((p) => p.id === doneId) : null;
+  const vendor = po ? vendorOf(po.vendorId) : undefined;
+
+  /* Inisialisasi baris editable setiap PO berganti */
+  useEffect(() => {
+    if (!po) {
+      setLines([]);
+      setSj("");
+      return;
+    }
+    setSj(`SJ-${po.po.split("/").pop()}-${po.vendorId}`);
+    setLines(
+      po.lines.map((l) => ({
+        key: uid(),
+        itemId: l.itemId,
+        ordered: l.qty,
+        qty: l.qty,
+        lot: "",
+        expired: daysFromNow(540),
+      }))
+    );
+    setChecks(Object.fromEntries(CHECKS.map((c) => [c.id, true])));
+  }, [po?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const doneCount = CHECKS.filter((c) => checks[c.id]).length;
+  const allChecked = doneCount === CHECKS.length;
+
+  const setLine = (key: string, patch: Partial<EditLine>) =>
+    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+
+  const addLine = () =>
+    setLines((ls) => [
+      ...ls,
+      { key: uid(), itemId: state.items[0]?.id ?? "", ordered: 0, qty: 1, lot: "", expired: daysFromNow(540) },
+    ]);
+
+  const removeLine = (key: string) => setLines((ls) => ls.filter((l) => l.key !== key));
 
   const openScanHit = (hit: ScanHit) => {
     setScanOpen(false);
@@ -40,13 +91,28 @@ export default function PenerimaanPage() {
     }
   };
 
-  const activeId = doneId ? "" : incoming.find((p) => p.id === selId)?.id ?? incoming[0]?.id ?? "";
-  const po = incoming.find((p) => p.id === activeId);
-  const donePO = doneId ? state.pos.find((p) => p.id === doneId) : null;
-  const vendor = po ? vendorOf(po.vendorId) : undefined;
-  const doneCount = CHECKS.filter((c) => checks[c.id]).length;
-  const allChecked = doneCount === CHECKS.length;
-  const hasLines = !!po?.receiptLines?.length;
+  const submit = () => {
+    if (!po) return;
+    const r = confirmReceipt(
+      po.id,
+      sj,
+      lines.map(({ itemId, qty, lot, expired }) => ({ itemId, qty, lot, expired }))
+    );
+    if (!r.ok) {
+      push({ title: "Verifikasi belum lengkap", desc: r.error, tone: "danger" });
+      return;
+    }
+    setDoneId(po.id);
+    const deviations = lines.filter((l) => l.ordered > 0 && l.qty !== l.ordered).length;
+    push({
+      title: "Penerimaan dikonfirmasi",
+      desc:
+        deviations > 0
+          ? `${lines.length} item masuk stok aktif · ${deviations} item berbeda dari jumlah pesanan (tercatat di audit).`
+          : `${lines.length} item masuk stok aktif sesuai pesanan · tercatat di Log Audit.`,
+      tone: "success",
+    });
+  };
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -67,12 +133,12 @@ export default function PenerimaanPage() {
               key={p.id}
               type="button"
               onClick={() => {
-                setSelId(p.id);
                 setDoneId(null);
+                setSelId(p.id);
               }}
               className={cn(
                 "rounded-lg border p-3 text-left transition-colors",
-                (po?.id === p.id)
+                po?.id === p.id
                   ? "border-primary bg-primary-fixed/40"
                   : "border-surface-container-high bg-surface-container-low hover:bg-surface-container"
               )}
@@ -103,7 +169,7 @@ export default function PenerimaanPage() {
             <div>
               <div className="font-sans text-title-sm text-on-surface">{donePO.po} selesai diverifikasi</div>
               <p className="mt-1 font-sans text-body-sm text-on-surface-variant">
-                Seluruh batch telah masuk stok aktif dan tercatat di Log Audit KARS.
+                Seluruh item telah masuk stok aktif dan tercatat di Log Audit KARS.
               </p>
             </div>
             <Btn
@@ -119,6 +185,7 @@ export default function PenerimaanPage() {
             </Btn>
           </Card>
         )}
+
         {po && (
           <Card>
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -129,10 +196,10 @@ export default function PenerimaanPage() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-sans text-title-sm text-on-surface">Verifikasi {po.po}</span>
-                    <Badge tone="info">FEFO Gatekeeper</Badge>
+                    <Badge tone="info">Penerimaan Aktual</Badge>
                   </div>
                   <p className="mt-0.5 font-sans text-body-sm text-on-surface-variant">
-                    {vendor?.name} · {po.method} · {fmtIDR(po.value)}
+                    {vendor?.name} · {po.method} · nilai pesanan {fmtIDR(po.value)}
                   </p>
                 </div>
               </div>
@@ -142,25 +209,15 @@ export default function PenerimaanPage() {
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 rounded-lg bg-surface-container-low p-3 sm:grid-cols-2">
-              <div className="flex items-center gap-2 rounded-lg bg-surface-container-lowest px-3 py-2">
-                <ReceiptText className="h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <div className="font-sans text-caption font-normal text-on-surface-variant">Surat Jalan</div>
-                  <div className="truncate font-mono text-data-mono-sm font-semibold text-on-surface">
-                    SJ-{po.po.split("/").pop()}-{po.vendorId}
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 rounded-lg bg-surface-container-lowest px-3 py-2">
-                <Thermometer className="h-4 w-4 shrink-0 text-primary" />
-                <div>
-                  <div className="font-sans text-caption font-normal text-on-surface-variant">Suhu Kedatangan</div>
-                  <div className="flex items-center gap-1.5 font-mono text-data-mono-sm font-semibold text-primary">
-                    4.5°C <Snowflake className="h-3 w-3" /> <span className="font-sans font-normal text-on-surface-variant">Stabil</span>
-                  </div>
-                </div>
-              </div>
+            <div className="mt-4 rounded-lg bg-surface-container-low p-3">
+              <Field label="Nomor Surat Jalan / Faktur Vendor (dapat diedit)">
+                <input
+                  className={cn(inputCls, "font-mono text-data-mono-md")}
+                  value={sj}
+                  onChange={(e) => setSj(e.target.value)}
+                  placeholder="cth. SJ-2025/KFL/0981"
+                />
+              </Field>
             </div>
 
             {/* Checklist */}
@@ -195,72 +252,137 @@ export default function PenerimaanPage() {
               </div>
             </div>
 
-            {/* Rincian item */}
+            {/* Rincian item — dapat diedit */}
             <div className="mt-4">
-              <div className="mb-2 font-sans text-title-sm text-on-surface">Rincian Item &amp; Lot</div>
-              {hasLines ? (
-                <div className="overflow-x-auto rounded-lg ring-1 ring-surface-container">
-                  <table className={tableCls}>
-                    <thead className={theadCls}>
-                      <tr>
-                        <th className={thCls}>Item</th>
-                        <th className={thCls}>Qty Diterima</th>
-                        <th className={thCls}>Lot / Batch</th>
-                        <th className={thCls}>Est. Kedaluwarsa</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {po.receiptLines!.map((l, i) => (
-                        <tr key={i} className={trCls}>
-                          <td className={cn(tdCls, "font-medium")}>{itemOf(l.itemId)?.name}</td>
-                          <td className={cn(tdCls, "font-mono text-data-mono-sm")}>{l.qty} {itemOf(l.itemId)?.unit}</td>
-                          <td className={tdCls}>
-                            <span className="rounded-md bg-surface-container-low px-1.5 py-0.5 font-mono text-data-mono-sm font-semibold text-tertiary">{l.lot}</span>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 font-sans text-title-sm text-on-surface">
+                  <PenLine className="h-4 w-4 text-primary" />
+                  Item Diterima — sesuaikan dengan kondisi aktual
+                </span>
+                <Btn tone="soft" icon={Plus} className="h-8 px-2.5" onClick={addLine}>
+                  Tambah Item
+                </Btn>
+              </div>
+              <div className="overflow-x-auto rounded-lg ring-1 ring-surface-container">
+                <table className={tableCls}>
+                  <thead className={theadCls}>
+                    <tr>
+                      <th className={thCls}>Item (dapat diganti)</th>
+                      <th className={cn(thCls, "text-center")}>Dipesan</th>
+                      <th className={cn(thCls, "text-center")}>Diterima</th>
+                      <th className={thCls}>No. Lot / Batch</th>
+                      <th className={thCls}>Kedaluwarsa</th>
+                      <th className={thCls}>Selisih</th>
+                      <th className={thCls} aria-label="Hapus" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((l) => {
+                      const item = itemOf(l.itemId);
+                      const noOrderRef = l.ordered === 0;
+                      const diff = noOrderRef ? 0 : l.qty - l.ordered;
+                      return (
+                        <tr key={l.key} className={trCls}>
+                          <td className={cn(tdCls, "min-w-52")}>
+                            <select
+                              className={cn(inputCls, "h-8 text-body-sm")}
+                              value={l.itemId}
+                              onChange={(e) => {
+                                const itemId = e.target.value;
+                                const ordered = po.lines.find((o) => o.itemId === itemId)?.qty ?? 0;
+                                setLine(l.key, { itemId, ordered });
+                              }}
+                            >
+                              {state.items.map((i) => (
+                                <option key={i.id} value={i.id}>{i.name} ({i.unit})</option>
+                              ))}
+                            </select>
                           </td>
-                          <td className={cn(tdCls, "whitespace-nowrap")}>{fmtDate(daysFromNow(l.days))}</td>
+                          <td className={cn(tdCls, "text-center font-mono text-data-mono-sm text-on-surface-variant")}>
+                            {noOrderRef ? "—" : `${l.ordered} ${item?.unit ?? ""}`}
+                          </td>
+                          <td className={cn(tdCls, "w-24 text-center")}>
+                            <input
+                              type="number" min={1}
+                              className={cn(inputCls, "h-8 w-20 text-center font-mono text-data-mono-sm")}
+                              value={l.qty}
+                              onChange={(e) => setLine(l.key, { qty: Math.max(1, +e.target.value || 1) })}
+                            />
+                          </td>
+                          <td className={cn(tdCls, "min-w-36")}>
+                            <input
+                              className={cn(inputCls, "h-8 font-mono text-data-mono-sm", !l.lot.trim() && "ring-1 ring-error/50")}
+                              value={l.lot}
+                              onChange={(e) => setLine(l.key, { lot: e.target.value })}
+                              placeholder="#LOT-XXXX"
+                            />
+                          </td>
+                          <td className={cn(tdCls, "min-w-36")}>
+                            <input
+                              type="date"
+                              className={cn(inputCls, "h-8 font-mono text-data-mono-sm")}
+                              value={l.expired}
+                              onChange={(e) => setLine(l.key, { expired: e.target.value })}
+                            />
+                          </td>
+                          <td className={tdCls}>
+                            {noOrderRef ? (
+                              <Badge tone="neutral">Di luar PO</Badge>
+                            ) : diff === 0 ? (
+                              <Badge tone="ok">Sesuai</Badge>
+                            ) : diff < 0 ? (
+                              <Badge tone="danger">Kurang {Math.abs(diff)}</Badge>
+                            ) : (
+                              <Badge tone="warn">Lebih +{diff}</Badge>
+                            )}
+                          </td>
+                          <td className={cn(tdCls, "text-right")}>
+                            <button
+                              type="button"
+                              title="Hapus baris"
+                              onClick={() => removeLine(l.key)}
+                              className="rounded-lg p-1.5 text-outline transition-colors hover:bg-error-container hover:text-on-error-container"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="rounded-lg bg-surface-container-low p-3 font-sans text-body-sm text-on-surface-variant">
-                  Rincian lot belum tersedia untuk PO ini ({po.lines.map((l) => `${itemOf(l.itemId)?.name} × ${l.qty}`).join(", ")}).
-                  Minta vendor melengkapi dokumen CoA sebelum konfirmasi.
-                </div>
-              )}
+                      );
+                    })}
+                    {lines.length === 0 && (
+                      <tr>
+                        <td colSpan={7}>
+                          <Empty title="Belum ada item" desc="Klik Tambah Item untuk mencatat reagen/BMHP yang datang." />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 flex items-center gap-1.5 font-sans text-caption font-normal text-on-surface-variant">
+                <CircleAlert className="h-3.5 w-3.5 text-tertiary" />
+                Kiriman sering tidak sama jumlahnya dengan pesanan — kolom Diterima dapat diubah; selisih otomatis
+                tercatat di berita acara audit.
+              </p>
             </div>
 
             {/* CTA */}
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-                <Btn
-                  icon={Boxes}
-                  disabled={!allChecked || !hasLines}
-                  className="h-11 flex-1"
-                  onClick={() => {
-                    confirmReceipt(po.id);
-                    setDoneId(po.id);
-                    push({
-                      title: "Penerimaan dikonfirmasi",
-                      desc: `${po.po}: ${po.receiptLines!.length} batch masuk stok aktif · tercatat di Log Audit.`,
-                      tone: "success",
-                    });
-                  }}
-                >
-                  Konfirmasi &amp; Masukkan ke Stok
-                </Btn>
-                <Btn
-                  tone="danger"
-                  icon={Ban}
-                  className="h-11"
-                  onClick={() =>
-                    push({ title: "Formulir retur dibuka", desc: `Pengembalian untuk ${vendor?.name} disiapkan.`, tone: "danger" })
-                  }
-                >
-                  Retur / Tolak
-                </Btn>
+              <Btn icon={Boxes} disabled={!allChecked || lines.length === 0} className="h-11 flex-1" onClick={submit}>
+                Konfirmasi Penerimaan ({lines.length} item)
+              </Btn>
+              <Btn
+                tone="danger"
+                icon={Ban}
+                className="h-11"
+                onClick={() =>
+                  push({ title: "Formulir retur dibuka", desc: `Pengembalian untuk ${vendor?.name} disiapkan.`, tone: "danger" })
+                }
+              >
+                Retur / Tolak
+              </Btn>
             </div>
-            {(!allChecked && hasLines) && (
+            {!allChecked && (
               <p className="mt-2 text-center font-sans text-caption font-normal text-error">
                 Lengkapi seluruh standar kelayakan sebelum rilis stok.
               </p>

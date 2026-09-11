@@ -35,7 +35,7 @@ const BASE_USERS: Account[] = [
 const SESSION_KEY = "labstock-session";
 const CRED_KEY = "labstock-credentials";
 
-type Override = { username?: string; password?: string };
+type Override = { username?: string; password?: string; name?: string };
 type CredMap = Record<string, Override>;
 
 const loadCredMap = (): CredMap => {
@@ -45,12 +45,28 @@ const loadCredMap = (): CredMap => {
     return {};
   }
 };
+
+/** Inisial avatar — abaikan gelar depan (dr., Dra., Ir., Prof., dll.) */
+const initialsFor = (name: string): string => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  let start = 0;
+  if (words.length >= 3 && /^(dr|dra|ir|prof|drg|hj|h|rs)$/i.test(words[0].replace(/\.$/, ""))) start = 1;
+  const a = words[start]?.[0] ?? "?";
+  const b = words[start + 1]?.[0] ?? "";
+  return (a + b).toUpperCase();
+};
+
 const mergeAccounts = (creds: CredMap): Account[] =>
-  BASE_USERS.map((u) => ({
-    ...u,
-    username: creds[u.id]?.username ?? u.username,
-    password: creds[u.id]?.password ?? u.password,
-  }));
+  BASE_USERS.map((u) => {
+    const name = creds[u.id]?.name?.trim() || u.name;
+    return {
+      ...u,
+      name,
+      username: creds[u.id]?.username ?? u.username,
+      password: creds[u.id]?.password ?? u.password,
+      initial: initialsFor(name),
+    };
+  });
 
 type LoginResult = { ok: boolean; error?: string; user?: SessionUser };
 type ResetResult = { ok: boolean; error?: string; temp?: string };
@@ -62,9 +78,10 @@ type Auth = {
   logout: () => void;
   changeOwn: (
     currentPass: string,
-    opts: { newUsername?: string; newPassword?: string }
+    opts: { newUsername?: string; newPassword?: string; newName?: string }
   ) => { ok: boolean; error?: string };
   adminReset: (targetId: string) => ResetResult;
+  adminRename: (targetId: string, newName: string) => { ok: boolean; error?: string };
 };
 
 const AuthCtx = createContext<Auth | null>(null);
@@ -108,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(CRED_KEY, JSON.stringify(next));
   }, []);
 
-  /** Sinkronkan objek sesi bila akun berubah (mis. username diganti di sesi lain) */
+  /** Sinkronkan objek sesi bila akun berubah (mis. nama/username diganti) */
   const [sessionId, setSessionId] = useState<string | null>(() => readSession(mergeAccounts(loadCredMap()))?.id ?? null);
   const syncSession = useCallback(
     (accs: Account[]) => {
@@ -158,9 +175,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (accounts.some((a) => a.id !== me.id && a.username === uname))
           return { ok: false, error: `Username "${uname}" sudah dipakai petugas lain.` };
       }
+      const nname = opts.newName?.trim();
+      if (nname) {
+        if (nname.length < 3 || nname.length > 60)
+          return { ok: false, error: "Nama lengkap 3–60 karakter." };
+        if (!/[a-zA-Z]/.test(nname))
+          return { ok: false, error: "Nama tidak valid — harus mengandung huruf." };
+      }
       if (opts.newPassword && opts.newPassword.length < 6)
         return { ok: false, error: "Password baru minimal 6 karakter." };
-      if (!uname && !opts.newPassword) return { ok: false, error: "Tidak ada perubahan untuk disimpan." };
+      if (!uname && !opts.newPassword && !nname)
+        return { ok: false, error: "Tidak ada perubahan untuk disimpan." };
 
       const next: CredMap = {
         ...creds,
@@ -168,12 +193,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...creds[me.id],
           ...(uname ? { username: uname } : {}),
           ...(opts.newPassword ? { password: opts.newPassword } : {}),
+          ...(nname ? { name: nname } : {}),
         },
       };
       saveCreds(next);
-      const nextAccounts = mergeAccounts(next);
-      syncSession(nextAccounts);
+      syncSession(mergeAccounts(next));
       persistSession(me.id);
+      return { ok: true };
+    },
+    [accounts, creds, saveCreds, sessionId, syncSession]
+  );
+
+  const adminRename = useCallback<Auth["adminRename"]>(
+    (targetId, newName) => {
+      const me = accounts.find((a) => a.id === sessionId);
+      if (!me || me.roleKey !== "superadmin")
+        return { ok: false, error: "Hanya Super Admin yang dapat mengubah nama akun." };
+      const target = accounts.find((a) => a.id === targetId);
+      if (!target) return { ok: false, error: "Akun tidak ditemukan." };
+      const nname = newName.trim();
+      if (nname.length < 3 || nname.length > 60)
+        return { ok: false, error: "Nama lengkap 3–60 karakter." };
+      if (!/[a-zA-Z]/.test(nname))
+        return { ok: false, error: "Nama tidak valid — harus mengandung huruf." };
+      const next: CredMap = { ...creds, [targetId]: { ...creds[targetId], name: nname } };
+      saveCreds(next);
+      syncSession(mergeAccounts(next));
       return { ok: true };
     },
     [accounts, creds, saveCreds, sessionId, syncSession]
@@ -195,8 +240,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ session, accounts, login, logout, changeOwn, adminReset }),
-    [session, accounts, login, logout, changeOwn, adminReset]
+    () => ({ session, accounts, login, logout, changeOwn, adminReset, adminRename }),
+    [session, accounts, login, logout, changeOwn, adminReset, adminRename]
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

@@ -1,13 +1,11 @@
 import {
-  FlaskConical, TriangleAlert, CalendarX, Wallet, ShoppingBag, Thermometer,
-  ArrowRight, Inbox, ClipboardCheck,
+  FlaskConical, TriangleAlert, CalendarX, Wallet, ShoppingBag,
+  ArrowRight, Inbox, ClipboardCheck, ArrowUpFromLine,
 } from "lucide-react";
-import { Card, CardTitle, Stat, Bars, Spark, Badge, Btn } from "../components/ui";
-import { useStore, useAlerts, daysFromNow, fmtIDRShort, fmtIDR, fmtDate } from "../store/store";
+import { Card, CardTitle, Stat, Bars, Badge, Btn } from "../components/ui";
+import { useStore, useAlerts, daysFromNow, fmtIDRShort, fmtIDR, fmtDate, todayISO } from "../store/store";
 import type { NavigateFn } from "../router";
 import { cn } from "../utils/cn";
-
-const DEVICES = ["Chiller A", "Chiller B", "Freezer -20°C"] as const;
 
 export default function DashboardPage({ navigate }: { navigate: NavigateFn }) {
   const { state } = useStore();
@@ -53,7 +51,7 @@ export default function DashboardPage({ navigate }: { navigate: NavigateFn }) {
         <Card className="xl:col-span-2">
           <CardTitle
             title="Barang Keluar — 7 Hari Terakhir"
-            desc="Total unit yang didistribusikan ke unit layanan per hari"
+            desc="Total unit terpakai Lab Patologi Klinik & UPD per hari"
             action={<Btn tone="ghost" icon={ClipboardCheck} onClick={() => navigate("pencatatan-pemakaian-harian")} className="h-8 px-2.5">Catat</Btn>}
           />
           <Bars data={usageBars} h={130} />
@@ -93,29 +91,34 @@ export default function DashboardPage({ navigate }: { navigate: NavigateFn }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Suhu */}
+        {/* Pemakaian terakhir */}
         <Card>
           <CardTitle
-            title="Rantai Dingin"
-            desc="Pembacaan terakhir datalogger"
-            action={<Btn tone="ghost" icon={Thermometer} onClick={() => navigate("monitoring-suhu-chiller")} className="h-8 px-2.5">Detail</Btn>}
+            title="Pemakaian Terakhir"
+            desc="Barang keluar terbaru yang tercatat"
+            action={<Btn tone="ghost" icon={ArrowUpFromLine} onClick={() => navigate("pencatatan-pemakaian-harian")} className="h-8 px-2.5">Detail</Btn>}
           />
-          <div className="flex flex-col gap-2">
-            {DEVICES.map((d) => {
-              const logs = state.temps.filter((t) => t.device === d);
-              const last = logs[0];
-              const vals = [...logs].slice(0, 10).reverse().map((t) => t.value);
+          <div className="flex flex-col divide-y divide-surface-container">
+            {state.usages.slice(0, 5).map((u) => {
+              const it = state.items.find((i) => i.id === u.itemId);
               return (
-                <div key={d} className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2">
-                  <div>
-                    <div className="font-sans text-body-sm font-medium text-on-surface">{d}</div>
-                    <div className="font-sans text-caption font-normal text-on-surface-variant">Update {last?.at}</div>
+                <div key={u.id} className="flex items-center justify-between gap-2 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-sans text-body-sm font-medium text-on-surface">{it?.name}</div>
+                    <div className="truncate font-sans text-caption font-normal text-on-surface-variant">{u.toUnit}</div>
                   </div>
-                  <Spark data={vals} w={84} h={26} />
-                  <span className="font-mono text-data-mono-md font-semibold text-primary">{last?.value.toFixed(1)}°C</span>
+                  <div className="shrink-0 text-right">
+                    <div className="font-mono text-data-mono-sm font-semibold text-error">-{u.qty} {it?.unit}</div>
+                    <div className="font-sans text-caption font-normal text-on-surface-variant">
+                      {u.date === todayISO() ? "Hari ini" : fmtDate(u.date)}
+                    </div>
+                  </div>
                 </div>
               );
             })}
+            {state.usages.length === 0 && (
+              <p className="py-6 text-center font-sans text-body-sm text-on-surface-variant">Belum ada pemakaian tercatat.</p>
+            )}
           </div>
         </Card>
 
@@ -132,7 +135,7 @@ export default function DashboardPage({ navigate }: { navigate: NavigateFn }) {
                 key={p.id}
                 type="button"
                 onClick={() => navigate(p.status === "Dikirim" ? "penerimaan-barang" : "purchase-order-e-katalog")}
-                className="flex items-center justify-between gap-3 py-2.5 text-left transition-colors hover:bg-surface-container-low -mx-2 rounded-lg px-2"
+                className="-mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-surface-container-low"
               >
                 <div className="min-w-0">
                   <div className="font-mono text-data-mono-sm font-semibold text-primary">{p.po}</div>
@@ -146,6 +149,9 @@ export default function DashboardPage({ navigate }: { navigate: NavigateFn }) {
                 </div>
               </button>
             ))}
+            {state.pos.filter((p) => p.status !== "Diterima").length === 0 && (
+              <p className="py-6 text-center font-sans text-body-sm text-on-surface-variant">Tidak ada PO berjalan.</p>
+            )}
           </div>
         </Card>
       </div>

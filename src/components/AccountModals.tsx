@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   UserCog, KeyRound, RotateCcw, Copy, CircleAlert, Eye, EyeOff,
-  Save, ShieldCheck,
+  Save, ShieldCheck, PenLine, Check, X,
 } from "lucide-react";
 import { Modal, Btn, Field, inputCls, Badge, type BadgeTone } from "./ui";
 import { useAuth, type RoleKey } from "../store/auth";
@@ -19,6 +19,7 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const { logEvent } = useStore();
   const push = useToast();
 
+  const [name, setName] = useState(session?.name ?? "");
   const [uname, setUname] = useState(session?.username ?? "");
   const [cur, setCur] = useState("");
   const [nw, setNw] = useState("");
@@ -26,15 +27,19 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const [show, setShow] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const nameChanged = name.trim().length > 0 && name.trim() !== session?.name;
   const unameChanged = uname.trim().toLowerCase() !== session?.username;
   const passChanged = nw.length > 0;
 
   const submit = () => {
     setErr(null);
     const newU = uname.trim().toLowerCase();
-    if (!unameChanged && !passChanged) return setErr("Tidak ada perubahan untuk disimpan.");
+    const newName = name.trim();
+    if (!unameChanged && !passChanged && !nameChanged) return setErr("Tidak ada perubahan untuk disimpan.");
     if (unameChanged && !/^[a-z0-9._-]{3,20}$/.test(newU))
       return setErr("Username 3–20 karakter (huruf kecil, angka, titik, minus, underscore).");
+    if (nameChanged && (newName.length < 3 || newName.length > 60))
+      return setErr("Nama lengkap 3–60 karakter.");
     if (passChanged) {
       if (nw.length < 6) return setErr("Password baru minimal 6 karakter.");
       if (nw !== cf) return setErr("Konfirmasi password baru tidak sama.");
@@ -42,17 +47,21 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     const r = changeOwn(cur, {
       newUsername: unameChanged ? newU : undefined,
       newPassword: passChanged ? nw : undefined,
+      newName: nameChanged ? newName : undefined,
     });
     if (!r.ok) return setErr(r.error ?? "Gagal menyimpan perubahan.");
 
+    const parts = [nameChanged && "nama", unameChanged && "username", passChanged && "password"].filter(
+      (p): p is string => typeof p === "string"
+    );
     logEvent(
       "Kepatuhan",
-      unameChanged ? "Username akun diubah" : "Password akun diubah",
-      `${session?.name} memperbarui kredensial @${unameChanged ? newU : session?.username}`
+      parts.length === 1 && nameChanged ? "Nama akun diubah" : "Kredensial akun diubah",
+      `${session?.name} memperbarui ${parts.join(", ")} akun @${unameChanged ? newU : session?.username}`
     );
     push({
-      title: "Kredensial diperbarui",
-      desc: unameChanged ? `Username baru Anda: @${newU}` : "Password baru langsung berlaku untuk login berikutnya.",
+      title: "Perubahan akun tersimpan",
+      desc: `${parts.map((p) => p[0].toUpperCase() + p.slice(1)).join(", ")} berhasil diperbarui.`,
       tone: "success",
     });
     onClose();
@@ -72,6 +81,11 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="flex flex-col gap-3">
+        <Field label="Nama Lengkap &amp; Gelar">
+          <input className={inputCls} value={name}
+            onChange={(e) => setName(e.target.value)} placeholder="cth. dr. Ratna Dewi, Sp.PK" />
+        </Field>
+
         <Field label="Username Baru">
           <input className={cn(inputCls, "font-mono text-data-mono-md")} value={uname}
             onChange={(e) => setUname(e.target.value)} autoComplete="username" />
@@ -118,11 +132,26 @@ export function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
 /* ── Kelola akun petugas (khusus Super Admin) ───────────────────────────── */
 export function AdminAccountsModal({ onClose }: { onClose: () => void }) {
-  const { session, accounts, adminReset } = useAuth();
+  const { session, accounts, adminReset, adminRename } = useAuth();
   const { logEvent } = useStore();
   const push = useToast();
   const [temps, setTemps] = useState<Record<string, string>>({});
   const [err, setErr] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+
+  const saveRename = (a: (typeof accounts)[number]) => {
+    setErr(null);
+    const r = adminRename(a.id, editVal);
+    if (!r.ok) return setErr(r.error ?? "Gagal mengubah nama.");
+    logEvent(
+      "Kepatuhan",
+      "Nama akun diubah",
+      `${session?.name} mengubah nama akun ${a.name} (@${a.username}) menjadi "${editVal.trim()}"`
+    );
+    push({ title: "Nama akun diperbarui", desc: `@${a.username} kini atas nama ${editVal.trim()}.`, tone: "success" });
+    setEditingId(null);
+  };
 
   return (
     <Modal open onClose={onClose} title="Kelola Akun Petugas" wide>
@@ -152,52 +181,92 @@ export function AdminAccountsModal({ onClose }: { onClose: () => void }) {
                   {a.initial}
                 </span>
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate font-sans text-body-md font-medium text-on-surface">{a.name}</span>
-                    <Badge tone={ROLE_TONE[a.roleKey]}>{a.role}</Badge>
-                    {isSelf && <Badge tone="neutral">Anda</Badge>}
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-1.5 font-mono text-data-mono-sm text-on-surface-variant">
-                    <UserCog className="h-3.5 w-3.5" />@{a.username}
-                    <KeyRound className="ml-2 h-3.5 w-3.5" />••••••••
-                  </div>
+                  {editingId === a.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        autoFocus
+                        value={editVal}
+                        onChange={(e) => setEditVal(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveRename(a);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        className="h-8 w-52 rounded-lg bg-surface-container-lowest px-2.5 font-sans text-body-md text-on-surface ring-1 ring-primary/40 focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                      <button type="button" title="Simpan nama" onClick={() => saveRename(a)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-on-primary transition-colors hover:bg-primary-container">
+                        <Check className="h-4 w-4" strokeWidth={2.5} />
+                      </button>
+                      <button type="button" title="Batal" onClick={() => setEditingId(null)}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-on-surface">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate font-sans text-body-md font-medium text-on-surface">{a.name}</span>
+                        <Badge tone={ROLE_TONE[a.roleKey]}>{a.role}</Badge>
+                        {isSelf && <Badge tone="neutral">Anda</Badge>}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5 font-mono text-data-mono-sm text-on-surface-variant">
+                        <UserCog className="h-3.5 w-3.5" />@{a.username}
+                        <KeyRound className="ml-2 h-3.5 w-3.5" />••••••••
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {temp ? (
-                <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-fixed px-2.5 py-1.5">
-                  <span className="font-mono text-data-mono-sm font-bold text-on-primary-fixed">{temp}</span>
-                  <button
-                    type="button"
-                    title="Salin password sementara"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(temp);
-                      push({ title: "Password sementara disalin", desc: `Untuk ${a.name}.`, tone: "info" });
-                    }}
-                    className="rounded-md p-1 text-primary transition-colors hover:bg-white/60"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <Btn
-                  tone="soft"
-                  icon={RotateCcw}
-                  className="h-8 px-2.5"
-                  disabled={isSelf}
-                  title={isSelf ? "Gunakan Pengaturan Akun untuk akun sendiri" : "Reset password akun ini"}
+              {editingId !== a.id && (
+                <button
+                  type="button"
+                  title="Ubah nama akun"
                   onClick={() => {
-                    setErr(null);
-                    const r = adminReset(a.id);
-                    if (!r.ok) return setErr(r.error ?? "Reset gagal.");
-                    setTemps((t) => ({ ...t, [a.id]: r.temp! }));
-                    logEvent("Kepatuhan", "Reset password akun", `${session?.name} menerbitkan password sementara untuk ${a.name} (@${a.username})`);
-                    push({ title: "Password direset", desc: `Password sementara untuk ${a.name} telah diterbitkan.`, tone: "success" });
+                    setEditingId(a.id);
+                    setEditVal(a.name);
                   }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-container-high text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-on-surface"
                 >
-                  Reset
-                </Btn>
+                  <PenLine className="h-4 w-4" />
+                </button>
               )}
+
+              {editingId !== a.id &&
+                (temp ? (
+                  <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-fixed px-2.5 py-1.5">
+                    <span className="font-mono text-data-mono-sm font-bold text-on-primary-fixed">{temp}</span>
+                    <button
+                      type="button"
+                      title="Salin password sementara"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(temp);
+                        push({ title: "Password sementara disalin", desc: `Untuk ${a.name}.`, tone: "info" });
+                      }}
+                      className="rounded-md p-1 text-primary transition-colors hover:bg-white/60"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <Btn
+                    tone="soft"
+                    icon={RotateCcw}
+                    className="h-8 px-2.5"
+                    disabled={isSelf}
+                    title={isSelf ? "Gunakan Pengaturan Akun untuk akun sendiri" : "Reset password akun ini"}
+                    onClick={() => {
+                      setErr(null);
+                      const r = adminReset(a.id);
+                      if (!r.ok) return setErr(r.error ?? "Reset gagal.");
+                      setTemps((t) => ({ ...t, [a.id]: r.temp! }));
+                      logEvent("Kepatuhan", "Reset password akun", `${session?.name} menerbitkan password sementara untuk ${a.name} (@${a.username})`);
+                      push({ title: "Password direset", desc: `Password sementara untuk ${a.name} telah diterbitkan.`, tone: "success" });
+                    }}
+                  >
+                    Reset
+                  </Btn>
+                ))}
             </div>
           );
         })}
@@ -205,7 +274,7 @@ export function AdminAccountsModal({ onClose }: { onClose: () => void }) {
 
       <p className="mt-4 flex items-center gap-1.5 font-sans text-caption font-normal text-on-surface-variant">
         <ShieldCheck className="h-4 w-4 text-primary" />
-        Seluruh reset password tercatat di Log Audit KARS bersama nama petugas yang mengeksekusi.
+        Seluruh perubahan nama &amp; reset password tercatat di Log Audit KARS bersama nama petugas yang mengeksekusi.
       </p>
     </Modal>
   );

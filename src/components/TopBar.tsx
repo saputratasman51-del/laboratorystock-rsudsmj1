@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Bell, CalendarX, Inbox, Menu, ScanBarcode, Thermometer, TriangleAlert, LogOut, History, ChevronDown, UserCog, UsersRound } from "lucide-react";
+import { useState } from "react";
+import { Bell, CalendarX, Inbox, Menu, ScanBarcode, TriangleAlert, LogOut, History, ChevronDown, UserCog, UsersRound } from "lucide-react";
 import { PAGE_META } from "../data/labstock";
 import { useAlerts, useStore } from "../store/store";
 import { useAuth } from "../store/auth";
@@ -29,22 +29,16 @@ export default function TopBar({
   const [accOpen, setAccOpen] = useState(false);
   const [admOpen, setAdmOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [read, setRead] = useState(false);
+
+  const unread = read ? 0 : alerts.length;
+  const meta = PAGE_META[path];
 
   const openScanHit = (hit: ScanHit) => {
     setScanOpen(false);
     navigate(hit.path, { q: hit.query });
     push({ title: hit.title, desc: hit.desc, tone: "success" });
   };
-  const [read, setRead] = useState(false);
-  const [temp, setTemp] = useState(4.2);
-
-  useEffect(() => {
-    const t = window.setInterval(() => setTemp(+(4 + Math.random() * 0.5).toFixed(1)), 4000);
-    return () => window.clearInterval(t);
-  }, []);
-
-  const unread = read ? 0 : alerts.length;
-  const meta = PAGE_META[path];
 
   return (
     <header className="fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between gap-3 bg-surface-container-lowest/90 px-4 shadow-card backdrop-blur-md lg:left-64 lg:px-6">
@@ -59,12 +53,9 @@ export default function TopBar({
         </button>
         <div className="hidden min-w-0 flex-col md:flex">
           <span className="truncate font-sans text-title-sm text-on-surface">{meta?.title ?? "Labstock"}</span>
-          <span className="font-sans text-caption font-normal text-on-surface-variant">RSUD SMJ 1 · Gudang Farmasi-Lab</span>
-        </div>
-        <div className="ml-2 hidden shrink-0 items-center gap-2 rounded-full bg-surface-container-low px-2.5 py-1 xl:flex">
-          <Thermometer className="h-3.5 w-3.5 text-primary" strokeWidth={2.2} />
-          <span className="font-mono text-data-mono-sm font-semibold text-primary">{temp.toFixed(1)}°C</span>
-          <span className="font-sans text-caption font-normal text-on-surface-variant">Cold-chain aman</span>
+          <span className="font-sans text-caption font-normal text-on-surface-variant">
+            RSUD SMJ · Pencatatan &amp; Pelaporan Internal Lab
+          </span>
         </div>
       </div>
 

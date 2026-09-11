@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Star, Trash2, CalendarDays, QrCode, ScanLine } from "lucide-react";
-import { Card, Badge, Btn, Empty, inputCls, thCls, tdCls, tableCls, theadCls, trCls } from "../components/ui";
+import { Search, Star, Trash2, CalendarDays, QrCode, ScanLine, PenLine, Save } from "lucide-react";
+import { Card, Badge, Btn, Empty, Modal, Field, inputCls, thCls, tdCls, tableCls, theadCls, trCls } from "../components/ui";
 import { useStore, daysUntil, fmtDate, fmtIDR } from "../store/store";
 import { useToast } from "../components/Toast";
 import QRScannerModal from "../components/QRScannerModal";
@@ -9,7 +9,7 @@ import type { ScanHit } from "../utils/scan";
 import { cn } from "../utils/cn";
 
 /** QR semu berbasis hash lot — identitas visual nomor batch */
-function FauxQR({ seed }: { seed: string }) {
+export function FauxQR({ seed }: { seed: string }) {
   let h = 0;
   for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   const N = 11;
@@ -17,7 +17,7 @@ function FauxQR({ seed }: { seed: string }) {
     const x = i % N, y = (i / N) | 0;
     const finder = (x < 3 && y < 3) || (x > N - 4 && y < 3) || (x < 3 && y > N - 4);
     if (finder) return true;
-    return ((h >> (i % 24)) ^ (h >> ((i * 7) % 24)) ^ (i * h)) & 1 ? true : false;
+    return Boolean(((h >> (i % 24)) ^ (h >> ((i * 7) % 24)) ^ (i * h)) & 1);
   });
   const s = 7;
   return (
@@ -31,13 +31,14 @@ function FauxQR({ seed }: { seed: string }) {
 }
 
 export default function BatchPage() {
-  const { state, itemOf, togglePriority, disposeBatch } = useStore();
+  const { state, itemOf, togglePriority, disposeBatch, updateBatch } = useStore();
   const push = useToast();
   const [q, setQ] = useState("");
   const [selId, setSelId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [form, setForm] = useState({ lot: "", qty: 0, expired: "", supplier: "" });
 
-  /* Hasil pindai dari halaman lain (#/...?q=lot) — isi pencarian & seleksi lot */
   const qParam = useHashParam("q");
   useEffect(() => {
     if (!qParam) return;
@@ -63,7 +64,24 @@ export default function BatchPage() {
       .sort((a, b) => daysUntil(a.expired) - daysUntil(b.expired));
   }, [state.batches, q, itemOf]);
 
-  const sel = rows.find((b) => b.id === selId) ?? null;
+  const sel = rows.find((b) => b.id === selId) ?? state.batches.find((b) => b.id === selId) ?? null;
+
+  const openEdit = () => {
+    if (!sel) return;
+    setForm({ lot: sel.lot, qty: sel.qty, expired: sel.expired, supplier: sel.supplier });
+    setEditOpen(true);
+  };
+
+  const submitEdit = () => {
+    if (!sel) return;
+    if (!form.lot.trim()) {
+      push({ title: "Lot wajib diisi", desc: "Nomor lot tidak boleh kosong.", tone: "danger" });
+      return;
+    }
+    updateBatch(sel.id, { lot: form.lot.trim(), qty: Math.max(0, form.qty), expired: form.expired, supplier: form.supplier.trim() || sel.supplier });
+    setEditOpen(false);
+    push({ title: "Batch diperbarui", desc: `Lot ${form.lot.trim()} tersimpan — stok item menyesuaikan otomatis.`, tone: "success" });
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -97,12 +115,13 @@ export default function BatchPage() {
                 {daysUntil(sel.expired)} hari lagi
               </Badge>
             </div>
-            <div className="mt-1 font-sans text-title-sm text-on-surface">{itemOf(sel.itemId)?.name}</div>
+            <div className="mt-1 font-sans text-title-sm text-on-surface">{itemOf(sel.itemId)?.name ?? "Item terhapus"}</div>
             <div className="mt-1 font-sans text-body-sm text-on-surface-variant">
               {sel.qty} unit · {sel.supplier} · diterima {fmtDate(sel.receivedAt)} · exp {fmtDate(sel.expired)}
             </div>
           </div>
-          <div className="flex shrink-0 gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Btn tone="soft" icon={PenLine} onClick={openEdit}>Edit</Btn>
             <Btn
               tone="soft"
               icon={Star}
@@ -140,7 +159,7 @@ export default function BatchPage() {
                 <th className={thCls}>Diterima</th>
                 <th className={thCls}>Kedaluwarsa</th>
                 <th className={thCls}>Sisa Waktu</th>
-                <th className={thCls}>Nilai</th>
+                <th className={cn(thCls, "text-right")}>Nilai</th>
               </tr>
             </thead>
             <tbody>
@@ -160,7 +179,7 @@ export default function BatchPage() {
                         {b.priority && <Star className="h-3.5 w-3.5 fill-tertiary-fixed-dim text-tertiary" />}
                       </span>
                     </td>
-                    <td className={cn(tdCls, "max-w-52 truncate")}>{item?.name}</td>
+                    <td className={cn(tdCls, "max-w-52 truncate")}>{item?.name ?? "-"}</td>
                     <td className={cn(tdCls, "font-mono text-data-mono-sm")}>{b.qty} {item?.unit}</td>
                     <td className={cn(tdCls, "max-w-44 truncate text-on-surface-variant")}>{b.supplier}</td>
                     <td className={cn(tdCls, "whitespace-nowrap text-on-surface-variant")}>{fmtDate(b.receivedAt)}</td>
@@ -181,6 +200,31 @@ export default function BatchPage() {
           </table>
         </div>
       </Card>
+
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Batch / Lot">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Nomor Lot / Batch">
+            <input className={cn(inputCls, "font-mono text-data-mono-md")} value={form.lot}
+              onChange={(e) => setForm({ ...form, lot: e.target.value })} />
+          </Field>
+          <Field label="Jumlah (stok menyesuaikan)">
+            <input type="number" min={0} className={inputCls} value={form.qty}
+              onChange={(e) => setForm({ ...form, qty: Math.max(0, +e.target.value) })} />
+          </Field>
+          <Field label="Tanggal Kedaluwarsa">
+            <input type="date" className={cn(inputCls, "font-mono text-data-mono-sm")} value={form.expired}
+              onChange={(e) => setForm({ ...form, expired: e.target.value })} />
+          </Field>
+          <Field label="Supplier">
+            <input className={inputCls} value={form.supplier}
+              onChange={(e) => setForm({ ...form, supplier: e.target.value })} />
+          </Field>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Btn tone="ghost" onClick={() => setEditOpen(false)}>Batal</Btn>
+          <Btn icon={Save} onClick={submitEdit}>Simpan Perubahan</Btn>
+        </div>
+      </Modal>
 
       {scanOpen && <QRScannerModal onClose={() => setScanOpen(false)} onOpen={openScanHit} />}
     </div>

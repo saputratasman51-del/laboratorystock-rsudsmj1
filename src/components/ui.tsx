@@ -177,3 +177,20 @@ export const tdCls = "px-3 py-2.5 align-middle font-sans text-body-md text-on-su
 export const tableCls = "w-full min-w-max text-left";
 export const theadCls = "bg-surface-container-low";
 export const trCls = "border-t border-surface-container transition-colors hover:bg-surface-container-low";
+
+/* ── Konfirmasi hapus dua langkah (klik pertama mempersenjatai, klik kedua mengeksekusi) ── */
+import { useRef, useState } from "react";
+export function useArmable(timeout = 2800) {
+  const [armed, setArmed] = useState<string | null>(null);
+  const timer = useRef<number | null>(null);
+  const arm = (id: string) => {
+    setArmed(id);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setArmed(null), timeout);
+  };
+  const disarm = () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    setArmed(null);
+  };
+  return { armed, arm, disarm };
+}

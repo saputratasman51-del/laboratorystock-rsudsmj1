@@ -21,6 +21,9 @@ export const daysUntil = (s: string) =>
   Math.ceil((new Date(s + "T00:00:00").getTime() - new Date(todayISO() + "T00:00:00").getTime()) / 86400000);
 const uid = () => Math.random().toString(36).slice(2, 9).toUpperCase();
 
+/** Unit internal yang terhubung ke stok barang */
+export const UNITS = ["Laboratorium Patologi Klinik", "Unit Pelayanan Darah (UPD)"] as const;
+
 /* ── Tipe ────────────────────────────────────────────────────────────────── */
 export type Category = "Reagensia" | "BMHP" | "Alkes";
 export type Item = {
@@ -31,7 +34,6 @@ export type Batch = {
   id: string; itemId: string; lot: string; qty: number; expired: string;
   supplier: string; receivedAt: string; priority?: boolean;
 };
-export type TempLog = { id: string; at: string; device: string; value: number; by: string };
 export type Usage = {
   id: string; date: string; itemId: string; qty: number; toUnit: string; user: string; note: string;
 };
@@ -42,10 +44,10 @@ export type StockRequest = {
 };
 export type POStatus = "Draft" | "Diajukan" | "Disetujui" | "Dikirim" | "Diterima";
 export type POLine = { itemId: string; qty: number };
-export type ReceiptLine = { itemId: string; qty: number; lot: string; days: number };
+export type ReceiptLine = { itemId: string; qty: number; lot: string; expired: string };
 export type PO = {
   id: string; po: string; date: string; vendorId: string; method: string; status: POStatus;
-  value: number; eta: string; lines: POLine[]; receiptLines?: ReceiptLine[];
+  value: number; eta: string; lines: POLine[];
 };
 export type Vendor = {
   id: string; name: string; category: string; pic: string; phone: string; email: string;
@@ -54,23 +56,16 @@ export type Vendor = {
 export type AuditLog = { id: string; at: string; actor: string; module: string; action: string; detail: string };
 
 export type State = {
-  items: Item[]; batches: Batch[]; temps: TempLog[]; usages: Usage[];
+  items: Item[]; batches: Batch[]; usages: Usage[];
   requests: StockRequest[]; pos: PO[]; vendors: Vendor[]; audit: AuditLog[];
   actor: string;
 };
 
 const ACTOR = "dr. Ratna Dewi, Sp.PK";
+const U_PK = UNITS[0];
+const U_UPD = UNITS[1];
 
-/* ── Seed data ───────────────────────────────────────────────────────────── */
-const tempHistory = (device: string, base: number, by: string): TempLog[] =>
-  Array.from({ length: 8 }, (_, i) => ({
-    id: `${device}-${i}`,
-    at: `${String((i * 3) % 24).padStart(2, "0")}:00`,
-    device,
-    value: +(base + (Math.sin(i * 1.7) + 1) * 0.3).toFixed(1),
-    by,
-  }));
-
+/* ── Data awal ───────────────────────────────────────────────────────────── */
 const SEED: State = {
   actor: ACTOR,
   items: [
@@ -97,39 +92,30 @@ const SEED: State = {
     { id: "B-09", itemId: "ITM-005", lot: "#EDT-560", qty: 1200, expired: daysFromNow(430), supplier: "PT Anugerah Pharmindo", receivedAt: daysFromNow(-10) },
     { id: "B-10", itemId: "ITM-008", lot: "#ABD-330", qty: 600, expired: daysFromNow(210), supplier: "PT Bio Farma (Persero)", receivedAt: daysFromNow(-15) },
   ],
-  temps: [
-    ...tempHistory("Chiller A", 3.9, "Auto-Logger"),
-    ...tempHistory("Chiller B", 3.5, "Auto-Logger"),
-    ...tempHistory("Freezer -20°C", -20.1, "Auto-Logger"),
-  ],
   usages: [
-    { id: "U-01", date: daysFromNow(-6), itemId: "ITM-005", qty: 90, toUnit: "IGD", user: ACTOR, note: "Distribusi rutin" },
-    { id: "U-02", date: daysFromNow(-6), itemId: "ITM-001", qty: 2, toUnit: "Lab — Kimia Klinik", user: ACTOR, note: "Run HbA1c pagi" },
-    { id: "U-03", date: daysFromNow(-5), itemId: "ITM-006", qty: 60, toUnit: "Poli Penyakit Dalam", user: ACTOR, note: "Jadwal MCU" },
-    { id: "U-04", date: daysFromNow(-5), itemId: "ITM-002", qty: 1, toUnit: "Lab — Hematologi", user: ACTOR, note: "Maintenance XN-550" },
-    { id: "U-05", date: daysFromNow(-4), itemId: "ITM-005", qty: 140, toUnit: "Rawat Inap", user: ACTOR, note: "Round pagi" },
-    { id: "U-06", date: daysFromNow(-4), itemId: "ITM-003", qty: 1, toUnit: "Lab — Kimia Klinik", user: ACTOR, note: "Panel glukosa" },
-    { id: "U-07", date: daysFromNow(-3), itemId: "ITM-004", qty: 2, toUnit: "Lab — Hematologi", user: ACTOR, note: "QC harian" },
-    { id: "U-08", date: daysFromNow(-3), itemId: "ITM-007", qty: 3, toUnit: "Mikrobiologi", user: ACTOR, note: "Kultur sampel" },
-    { id: "U-09", date: daysFromNow(-2), itemId: "ITM-005", qty: 110, toUnit: "IGD", user: ACTOR, note: "Distribusi rutin" },
-    { id: "U-10", date: daysFromNow(-2), itemId: "ITM-008", qty: 25, toUnit: "Bank Darah", user: ACTOR, note: "Skrining donor" },
-    { id: "U-11", date: daysFromNow(-1), itemId: "ITM-001", qty: 2, toUnit: "Lab — Kimia Klinik", user: ACTOR, note: "Run HbA1c pagi" },
-    { id: "U-12", date: daysFromNow(-1), itemId: "ITM-006", qty: 45, toUnit: "Poli Umum", user: ACTOR, note: "Antrian MCU" },
+    { id: "U-01", date: daysFromNow(-6), itemId: "ITM-005", qty: 90, toUnit: U_UPD, user: ACTOR, note: "Distribusi skrining donor" },
+    { id: "U-02", date: daysFromNow(-6), itemId: "ITM-001", qty: 2, toUnit: U_PK, user: ACTOR, note: "Run HbA1c pagi" },
+    { id: "U-03", date: daysFromNow(-5), itemId: "ITM-006", qty: 60, toUnit: U_PK, user: ACTOR, note: "Pengambilan sampel rutin" },
+    { id: "U-04", date: daysFromNow(-5), itemId: "ITM-002", qty: 1, toUnit: U_PK, user: ACTOR, note: "Maintenance XN-550" },
+    { id: "U-05", date: daysFromNow(-4), itemId: "ITM-005", qty: 140, toUnit: U_PK, user: ACTOR, note: "Distribusi harian bangsal lab" },
+    { id: "U-06", date: daysFromNow(-4), itemId: "ITM-003", qty: 1, toUnit: U_PK, user: ACTOR, note: "Panel glukosa" },
+    { id: "U-07", date: daysFromNow(-3), itemId: "ITM-004", qty: 2, toUnit: U_PK, user: ACTOR, note: "QC harian hematologi" },
+    { id: "U-08", date: daysFromNow(-3), itemId: "ITM-007", qty: 3, toUnit: U_UPD, user: ACTOR, note: "Pengolahan komponen darah" },
+    { id: "U-09", date: daysFromNow(-2), itemId: "ITM-005", qty: 110, toUnit: U_UPD, user: ACTOR, note: "Distribusi skrining donor" },
+    { id: "U-10", date: daysFromNow(-2), itemId: "ITM-008", qty: 25, toUnit: U_UPD, user: ACTOR, note: "Uji golongan donor" },
+    { id: "U-11", date: daysFromNow(-1), itemId: "ITM-001", qty: 2, toUnit: U_PK, user: ACTOR, note: "Run HbA1c pagi" },
+    { id: "U-12", date: daysFromNow(-1), itemId: "ITM-006", qty: 45, toUnit: U_PK, user: ACTOR, note: "Pengambilan sampel rutin" },
   ],
   requests: [
-    { id: "REQ-001", date: daysFromNow(0), fromUnit: "IGD", itemId: "ITM-005", qty: 200, status: "Menunggu", note: "Stok triase menipis" },
-    { id: "REQ-002", date: daysFromNow(-1), fromUnit: "Poli Penyakit Dalam", itemId: "ITM-006", qty: 50, status: "Disetujui", note: "Jadwal MCU mingguan" },
-    { id: "REQ-003", date: daysFromNow(0), fromUnit: "Rawat Inap", itemId: "ITM-007", qty: 5, status: "Menunggu", note: "Persiapan panel akhir pekan" },
+    { id: "REQ-001", date: daysFromNow(0), fromUnit: U_UPD, itemId: "ITM-005", qty: 200, status: "Menunggu", note: "Stok skrining donor menipis" },
+    { id: "REQ-002", date: daysFromNow(-1), fromUnit: U_PK, itemId: "ITM-006", qty: 50, status: "Disetujui", note: "Jadwal pengambilan sampel mingguan" },
+    { id: "REQ-003", date: daysFromNow(0), fromUnit: U_UPD, itemId: "ITM-007", qty: 5, status: "Menunggu", note: "Persiapan pengolahan komponen akhir pekan" },
   ],
   pos: [
     {
       id: "PO1", po: "PO/2025/03/PK-0142", date: daysFromNow(-3), vendorId: "V-01", method: "E-Katalog",
       status: "Dikirim", value: 50300000, eta: "Hari ini 09:15",
       lines: [{ itemId: "ITM-001", qty: 10 }, { itemId: "ITM-002", qty: 5 }],
-      receiptLines: [
-        { itemId: "ITM-001", qty: 10, lot: "#HBA-2025-01", days: 630 },
-        { itemId: "ITM-002", qty: 5, lot: "#CLN-881", days: 680 },
-      ],
     },
     { id: "PO2", po: "PO/2025/03/MB-0089", date: daysFromNow(-5), vendorId: "V-02", method: "E-Katalog", status: "Dikirim", value: 88600000, eta: "Besok", lines: [{ itemId: "ITM-004", qty: 8 }, { itemId: "ITM-007", qty: 20 }] },
     { id: "PO3", po: "PO/2025/03/BD-0045", date: daysFromNow(-2), vendorId: "V-03", method: "Tender RS", status: "Disetujui", value: 62150000, eta: "12 Mar", lines: [{ itemId: "ITM-008", qty: 400 }] },
@@ -147,13 +133,13 @@ const SEED: State = {
   audit: [
     { id: "A-01", at: `${daysFromNow(-1)} 09:12`, actor: ACTOR, module: "Inventaris", action: "Penyesuaian stok", detail: "ITM-006 Jarum Vacutainer 22G -370 pcs (hasil stock opname)" },
     { id: "A-02", at: `${daysFromNow(-1)} 13:40`, actor: "Bambang S., A.Md.AK", module: "Pengadaan", action: "PO diajukan ke PPK", detail: "PO/2025/03/PK-0149 — Rp 115.400.000 (PT Sysmex Indonesia)" },
-    { id: "A-03", at: `${daysFromNow(0)} 07:05`, actor: "Sistem", module: "Monitoring", action: "Suhu chiller tercatat", detail: "Chiller A 4.2°C · Chiller B 3.8°C · Freezer -19.8°C — dalam rentang aman" },
+    { id: "A-03", at: `${daysFromNow(0)} 07:05`, actor: ACTOR, module: "Pemakaian", action: "Pemakaian dicatat", detail: "Reagen HbA1c Direct -2 Kit → Laboratorium Patologi Klinik (Run pagi)" },
     { id: "A-04", at: `${daysFromNow(0)} 08:15`, actor: ACTOR, module: "Kepatuhan", action: "Ekspor log audit", detail: "Periode Februari 2025 untuk asesor KARS (PDF terenkripsi)" },
   ],
 };
 
 /* ── Persistensi data operasional (localStorage) ─────────────────────────── */
-const DATA_KEY = "labstock-data-v1";
+const DATA_KEY = "labstock-data-v2";
 
 const initialState = (): State => {
   try {
@@ -169,18 +155,25 @@ const initialState = (): State => {
 
 /* ── Reducer ─────────────────────────────────────────────────────────────── */
 type Action =
-  | { type: "CONFIRM_RECEIPT"; poId: string }
+  | { type: "CONFIRM_RECEIPT"; poId: string; sj: string; lines: ReceiptLine[] }
   | { type: "ADD_USAGE"; itemId: string; qty: number; toUnit: string; note: string }
+  | { type: "DELETE_USAGE"; id: string }
   | { type: "ADD_ITEM"; item: Omit<Item, "id"> }
+  | { type: "UPDATE_ITEM"; id: string; patch: Partial<Omit<Item, "id">> }
+  | { type: "DELETE_ITEM"; id: string }
   | { type: "ADJUST_STOCK"; itemId: string; delta: number; reason: string }
-  | { type: "ADD_REQUEST"; fromUnit: string; itemId: string; qty: number; note: string }
-  | { type: "SET_REQUEST"; id: string; status: RequestStatus }
-  | { type: "ADD_PO"; vendorId: string; method: string; itemId: string; qty: number }
-  | { type: "ADVANCE_PO"; id: string }
-  | { type: "ADD_VENDOR"; vendor: Omit<Vendor, "id"> }
-  | { type: "ADD_TEMP"; device: string; value: number }
+  | { type: "UPDATE_BATCH"; id: string; patch: Partial<Pick<Batch, "lot" | "qty" | "expired" | "supplier">> }
   | { type: "TOGGLE_PRIORITY"; batchId: string }
   | { type: "DISPOSE_BATCH"; batchId: string }
+  | { type: "ADD_REQUEST"; fromUnit: string; itemId: string; qty: number; note: string }
+  | { type: "SET_REQUEST"; id: string; status: RequestStatus }
+  | { type: "DELETE_REQUEST"; id: string }
+  | { type: "ADD_PO"; vendorId: string; method: string; itemId: string; qty: number }
+  | { type: "ADVANCE_PO"; id: string }
+  | { type: "DELETE_PO"; id: string }
+  | { type: "ADD_VENDOR"; vendor: Omit<Vendor, "id"> }
+  | { type: "UPDATE_VENDOR"; id: string; patch: Omit<Vendor, "id"> }
+  | { type: "DELETE_VENDOR"; id: string }
   | { type: "SET_ACTOR"; name: string }
   | { type: "LOG"; module: string; action: string; detail: string };
 
@@ -191,24 +184,29 @@ function reducer(s: State, a: Action): State {
   switch (a.type) {
     case "CONFIRM_RECEIPT": {
       const po = s.pos.find((p) => p.id === a.poId);
-      if (!po || !po.receiptLines) return s;
+      if (!po || a.lines.length === 0) return s;
+      const vendor = s.vendors.find((v) => v.id === po.vendorId);
       const items = s.items.map((it) => {
-        const add = po.receiptLines!.filter((l) => l.itemId === it.id).reduce((n, l) => n + l.qty, 0);
+        const add = a.lines.filter((l) => l.itemId === it.id).reduce((n, l) => n + l.qty, 0);
         return add ? { ...it, stock: it.stock + add } : it;
       });
-      const vendor = s.vendors.find((v) => v.id === po.vendorId);
-      const newBatches: Batch[] = po.receiptLines.map((l) => ({
-        id: uid(), itemId: l.itemId, lot: l.lot, qty: l.qty,
-        expired: daysFromNow(l.days), supplier: vendor?.name ?? "-", receivedAt: todayISO(),
+      const newBatches: Batch[] = a.lines.map((l) => ({
+        id: uid(), itemId: l.itemId, lot: l.lot.trim(), qty: l.qty, expired: l.expired,
+        supplier: vendor?.name ?? "-", receivedAt: todayISO(),
       }));
-      const detail = po.receiptLines
-        .map((l) => `${s.items.find((i) => i.id === l.itemId)?.name} ${l.qty} unit (${l.lot})`)
+      const detail = a.lines
+        .map((l) => {
+          const item = s.items.find((i) => i.id === l.itemId);
+          const ordered = po.lines.find((o) => o.itemId === l.itemId)?.qty ?? 0;
+          const dev = ordered && l.qty !== ordered ? ` (pesan ${ordered}, terima ${l.qty})` : "";
+          return `${item?.name} ${l.qty} ${item?.unit ?? ""} lot ${l.lot.trim()} exp ${l.expired}${dev}`;
+        })
         .join("; ");
       return {
         ...s, items,
         batches: [...newBatches, ...s.batches],
         pos: s.pos.map((p) => (p.id === a.poId ? { ...p, status: "Diterima" } : p)),
-        audit: log(s, "Penerimaan", "Barang diterima gudang", `${po.po}: ${detail}`),
+        audit: log(s, "Penerimaan", "Barang diterima gudang", `${po.po} · SJ ${a.sj}: ${detail}`),
       };
     }
     case "ADD_USAGE": {
@@ -221,12 +219,44 @@ function reducer(s: State, a: Action): State {
         audit: log(s, "Pemakaian", "Pemakaian dicatat", `${it.name} -${a.qty} ${it.unit} → ${a.toUnit}`),
       };
     }
+    case "DELETE_USAGE": {
+      const u = s.usages.find((x) => x.id === a.id);
+      if (!u) return s;
+      const it = s.items.find((i) => i.id === u.itemId);
+      return {
+        ...s,
+        usages: s.usages.filter((x) => x.id !== a.id),
+        items: it ? s.items.map((i) => (i.id === u.itemId ? { ...i, stock: i.stock + u.qty } : i)) : s.items,
+        audit: log(s, "Pemakaian", "Entri pemakaian dihapus", `${it?.name ?? u.itemId} +${u.qty} dikembalikan (entri ${u.toUnit}, ${u.date})`),
+      };
+    }
     case "ADD_ITEM":
       return {
         ...s,
         items: [...s.items, { ...a.item, id: `ITM-${String(s.items.length + 1).padStart(3, "0")}` }],
         audit: log(s, "Inventaris", "Item baru ditambahkan", `${a.item.name} (${a.item.sku}) — stok awal ${a.item.stock} ${a.item.unit}`),
       };
+    case "UPDATE_ITEM": {
+      const it = s.items.find((i) => i.id === a.id);
+      if (!it) return s;
+      const keys = Object.keys(a.patch).join(", ");
+      return {
+        ...s,
+        items: s.items.map((i) => (i.id === a.id ? { ...i, ...a.patch } : i)),
+        audit: log(s, "Inventaris", "Item diperbarui", `${it.name} — perubahan: ${keys || "-"}`),
+      };
+    }
+    case "DELETE_ITEM": {
+      const it = s.items.find((i) => i.id === a.id);
+      if (!it) return s;
+      const removedBatches = s.batches.filter((b) => b.itemId === a.id).length;
+      return {
+        ...s,
+        items: s.items.filter((i) => i.id !== a.id),
+        batches: s.batches.filter((b) => b.itemId !== a.id),
+        audit: log(s, "Inventaris", "Item dihapus", `${it.name} (${it.sku}) beserta ${removedBatches} batch terkait`),
+      };
+    }
     case "ADJUST_STOCK": {
       const it = s.items.find((i) => i.id === a.itemId);
       if (!it) return s;
@@ -235,6 +265,40 @@ function reducer(s: State, a: Action): State {
         ...s,
         items: s.items.map((i) => (i.id === a.itemId ? { ...i, stock: next } : i)),
         audit: log(s, "Inventaris", "Penyesuaian stok", `${it.name} ${a.delta >= 0 ? "+" : ""}${a.delta} ${it.unit} → ${next} ${it.unit} (${a.reason})`),
+      };
+    }
+    case "UPDATE_BATCH": {
+      const b = s.batches.find((x) => x.id === a.id);
+      if (!b) return s;
+      const next: Batch = { ...b, ...a.patch };
+      const delta = (a.patch.qty ?? b.qty) - b.qty;
+      return {
+        ...s,
+        batches: s.batches.map((x) => (x.id === a.id ? next : x)),
+        items:
+          delta !== 0
+            ? s.items.map((i) => (i.id === b.itemId ? { ...i, stock: Math.max(0, i.stock + delta) } : i))
+            : s.items,
+        audit: log(s, "Inventaris", "Batch diperbarui", `Lot ${b.lot} → ${next.lot}${delta !== 0 ? ` · qty ${b.qty} → ${next.qty} (stok ${delta > 0 ? "+" : ""}${delta})` : ""} · exp ${next.expired}`),
+      };
+    }
+    case "TOGGLE_PRIORITY": {
+      const b = s.batches.find((x) => x.id === a.batchId);
+      return {
+        ...s,
+        batches: s.batches.map((x) => (x.id === a.batchId ? { ...x, priority: !x.priority } : x)),
+        audit: log(s, "Kepatuhan", b?.priority ? "Prioritas FEFO dicabut" : "Prioritas FEFO ditandai", `Lot ${b?.lot}`),
+      };
+    }
+    case "DISPOSE_BATCH": {
+      const b = s.batches.find((x) => x.id === a.batchId);
+      if (!b) return s;
+      const it = s.items.find((i) => i.id === b.itemId);
+      return {
+        ...s,
+        batches: s.batches.filter((x) => x.id !== a.batchId),
+        items: s.items.map((i) => (i.id === b.itemId ? { ...i, stock: Math.max(0, i.stock - b.qty) } : i)),
+        audit: log(s, "Kepatuhan", "Pemusnahan dicatat", `Lot ${b.lot} (${it?.name}) ${b.qty} unit dimusnahkan sesuai BAP`),
       };
     }
     case "ADD_REQUEST": {
@@ -264,6 +328,16 @@ function reducer(s: State, a: Action): State {
         audit: log(s, "Permintaan", `Permintaan ${a.status.toLowerCase()}`, `${req.id}: ${it?.name ?? ""} × ${req.qty} untuk ${req.fromUnit}`),
       };
     }
+    case "DELETE_REQUEST": {
+      const req = s.requests.find((r) => r.id === a.id);
+      if (!req || req.status !== "Menunggu") return s;
+      const it = s.items.find((i) => i.id === req.itemId);
+      return {
+        ...s,
+        requests: s.requests.filter((r) => r.id !== a.id),
+        audit: log(s, "Permintaan", "Permintaan dibatalkan", `${req.id}: ${it?.name ?? ""} × ${req.qty} (${req.fromUnit})`),
+      };
+    }
     case "ADD_PO": {
       const it = s.items.find((i) => i.id === a.itemId);
       const vendor = s.vendors.find((v) => v.id === a.vendorId);
@@ -288,35 +362,38 @@ function reducer(s: State, a: Action): State {
         audit: log(s, "Pengadaan", `Status PO → ${NEXT[po.status]}`, po.po),
       };
     }
+    case "DELETE_PO": {
+      const po = s.pos.find((p) => p.id === a.id);
+      if (!po) return s;
+      return {
+        ...s,
+        pos: s.pos.filter((p) => p.id !== a.id),
+        audit: log(s, "Pengadaan", "PO dihapus", `${po.po} (status ${po.status}) dihapus dari register`),
+      };
+    }
     case "ADD_VENDOR":
       return {
         ...s,
         vendors: [...s.vendors, { ...a.vendor, id: uid() }],
         audit: log(s, "Pengadaan", "Vendor terdaftar", `${a.vendor.name} — ${a.vendor.category}`),
       };
-    case "ADD_TEMP":
+    case "UPDATE_VENDOR": {
+      const v = s.vendors.find((x) => x.id === a.id);
+      if (!v) return s;
       return {
         ...s,
-        temps: [{ id: uid(), at: nowTime(), device: a.device, value: a.value, by: ACTOR }, ...s.temps].slice(0, 60),
-        audit: log(s, "Monitoring", "Pembacaan suhu manual", `${a.device}: ${a.value.toFixed(1)}°C`),
-      };
-    case "TOGGLE_PRIORITY": {
-      const b = s.batches.find((x) => x.id === a.batchId);
-      return {
-        ...s,
-        batches: s.batches.map((x) => (x.id === a.batchId ? { ...x, priority: !x.priority } : x)),
-        audit: log(s, "Kepatuhan", b?.priority ? "Prioritas FEFO dicabut" : "Prioritas FEFO ditandai", `Lot ${b?.lot}`),
+        vendors: s.vendors.map((x) => (x.id === a.id ? { ...x, ...a.patch } : x)),
+        audit: log(s, "Pengadaan", "Data vendor diperbarui", `${a.patch.name || v.name}`),
       };
     }
-    case "DISPOSE_BATCH": {
-      const b = s.batches.find((x) => x.id === a.batchId);
-      if (!b) return s;
-      const it = s.items.find((i) => i.id === b.itemId);
+    case "DELETE_VENDOR": {
+      const v = s.vendors.find((x) => x.id === a.id);
+      if (!v) return s;
+      const poCount = s.pos.filter((p) => p.vendorId === a.id).length;
       return {
         ...s,
-        batches: s.batches.filter((x) => x.id !== a.batchId),
-        items: s.items.map((i) => (i.id === b.itemId ? { ...i, stock: Math.max(0, i.stock - b.qty) } : i)),
-        audit: log(s, "Kepatuhan", "Pemusnahan dicatat", `Lot ${b.lot} (${it?.name}) ${b.qty} unit dimusnahkan sesuai BAP`),
+        vendors: s.vendors.filter((x) => x.id !== a.id),
+        audit: log(s, "Pengadaan", "Vendor dihapus", `${v.name} dihapus dari rekanan (${poCount} PO historis tetap tersimpan)`),
       };
     }
     case "SET_ACTOR":
@@ -332,22 +409,29 @@ function reducer(s: State, a: Action): State {
 type Result = { ok: boolean; error?: string };
 type Store = {
   state: State;
-  confirmReceipt: (poId: string) => void;
+  confirmReceipt: (poId: string, sj: string, lines: ReceiptLine[]) => Result;
   addUsage: (itemId: string, qty: number, toUnit: string, note: string) => Result;
+  deleteUsage: (id: string) => void;
   addItem: (item: Omit<Item, "id">) => void;
+  updateItem: (id: string, patch: Partial<Omit<Item, "id">>) => void;
+  deleteItem: (id: string) => void;
   adjustStock: (itemId: string, delta: number, reason: string) => void;
-  addRequest: (fromUnit: string, itemId: string, qty: number, note: string) => void;
-  setRequest: (id: string, status: RequestStatus) => Result;
-  addPO: (vendorId: string, method: string, itemId: string, qty: number) => Result;
-  advancePO: (id: string) => void;
-  addVendor: (v: Omit<Vendor, "id">) => void;
-  addTemp: (device: string, value: number) => void;
+  updateBatch: (id: string, patch: Partial<Pick<Batch, "lot" | "qty" | "expired" | "supplier">>) => void;
   togglePriority: (batchId: string) => void;
   disposeBatch: (batchId: string) => void;
-  itemOf: (id: string) => Item | undefined;
-  vendorOf: (id: string) => Vendor | undefined;
+  addRequest: (fromUnit: string, itemId: string, qty: number, note: string) => void;
+  setRequest: (id: string, status: RequestStatus) => Result;
+  deleteRequest: (id: string) => Result;
+  addPO: (vendorId: string, method: string, itemId: string, qty: number) => Result;
+  advancePO: (id: string) => void;
+  deletePO: (id: string) => void;
+  addVendor: (v: Omit<Vendor, "id">) => void;
+  updateVendor: (id: string, patch: Omit<Vendor, "id">) => void;
+  deleteVendor: (id: string) => void;
   setActor: (name: string) => void;
   logEvent: (module: string, action: string, detail: string) => void;
+  itemOf: (id: string) => Item | undefined;
+  vendorOf: (id: string) => Vendor | undefined;
 };
 
 const StoreCtx = createContext<Store | null>(null);
@@ -360,7 +444,6 @@ export const useStore = () => {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, SEED, initialState);
 
-  /* Simpan setiap perubahan data agar tidak hilang saat refresh */
   useEffect(() => {
     try {
       window.localStorage.setItem(DATA_KEY, JSON.stringify(state));
@@ -375,17 +458,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       state,
       itemOf: it,
       vendorOf: (id) => state.vendors.find((v) => v.id === id),
-      confirmReceipt: (poId) => dispatch({ type: "CONFIRM_RECEIPT", poId }),
       addItem: (item) => dispatch({ type: "ADD_ITEM", item }),
+      updateItem: (id, patch) => dispatch({ type: "UPDATE_ITEM", id, patch }),
+      deleteItem: (id) => dispatch({ type: "DELETE_ITEM", id }),
       adjustStock: (itemId, delta, reason) => dispatch({ type: "ADJUST_STOCK", itemId, delta, reason }),
-      addRequest: (fromUnit, itemId, qty, note) => dispatch({ type: "ADD_REQUEST", fromUnit, itemId, qty, note }),
-      addVendor: (vendor) => dispatch({ type: "ADD_VENDOR", vendor }),
-      addTemp: (device, value) => dispatch({ type: "ADD_TEMP", device, value }),
+      updateBatch: (id, patch) => dispatch({ type: "UPDATE_BATCH", id, patch }),
       togglePriority: (batchId) => dispatch({ type: "TOGGLE_PRIORITY", batchId }),
       disposeBatch: (batchId) => dispatch({ type: "DISPOSE_BATCH", batchId }),
+      addRequest: (fromUnit, itemId, qty, note) => dispatch({ type: "ADD_REQUEST", fromUnit, itemId, qty, note }),
+      addVendor: (vendor) => dispatch({ type: "ADD_VENDOR", vendor }),
+      updateVendor: (id, patch) => dispatch({ type: "UPDATE_VENDOR", id, patch }),
+      deleteVendor: (id) => dispatch({ type: "DELETE_VENDOR", id }),
       advancePO: (id) => dispatch({ type: "ADVANCE_PO", id }),
+      deletePO: (id) => dispatch({ type: "DELETE_PO", id }),
+      deleteUsage: (id) => dispatch({ type: "DELETE_USAGE", id }),
       setActor: (name) => dispatch({ type: "SET_ACTOR", name }),
       logEvent: (module, action, detail) => dispatch({ type: "LOG", module, action, detail }),
+      confirmReceipt: (poId, sj, lines) => {
+        if (!lines.length) return { ok: false, error: "Belum ada item yang diterima." };
+        for (const l of lines) {
+          if (!it(l.itemId)) return { ok: false, error: "Ada baris item yang belum dipilih." };
+          if (!l.lot.trim()) return { ok: false, error: "Nomor lot wajib diisi untuk semua baris." };
+          if (l.qty <= 0) return { ok: false, error: "Jumlah diterima harus lebih dari 0." };
+          if (!l.expired) return { ok: false, error: "Tanggal kedaluwarsa wajib diisi." };
+        }
+        dispatch({ type: "CONFIRM_RECEIPT", poId, sj: sj.trim() || "-", lines });
+        return { ok: true };
+      },
       addUsage: (itemId, qty, toUnit, note) => {
         const item = it(itemId);
         if (!item) return { ok: false, error: "Item tidak ditemukan." };
@@ -403,6 +502,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return { ok: false, error: `Stok ${item.name} tidak cukup (sisa ${item.stock}).` };
         }
         dispatch({ type: "SET_REQUEST", id, status });
+        return { ok: true };
+      },
+      deleteRequest: (id) => {
+        const req = state.requests.find((r) => r.id === id);
+        if (!req) return { ok: false, error: "Permintaan tidak ditemukan." };
+        if (req.status !== "Menunggu") return { ok: false, error: "Hanya permintaan berstatus Menunggu yang dapat dihapus." };
+        dispatch({ type: "DELETE_REQUEST", id });
         return { ok: true };
       },
       addPO: (vendorId, method, itemId, qty) => {

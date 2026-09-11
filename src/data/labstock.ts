@@ -1,7 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
-  Snowflake,
   FlaskConical,
   QrCode,
   Syringe,
@@ -20,11 +19,8 @@ export type NavSection = { title: string; items: NavItem[] };
 
 export const NAV_SECTIONS: NavSection[] = [
   {
-    title: "Monitoring & Utama",
-    items: [
-      { id: "dashboard-alert-center", label: "Dashboard & Alert Center", icon: LayoutDashboard },
-      { id: "monitoring-suhu-chiller", label: "Monitoring Suhu & Chiller", icon: Snowflake },
-    ],
+    title: "Menu Utama",
+    items: [{ id: "dashboard-alert-center", label: "Dashboard & Alert Center", icon: LayoutDashboard }],
   },
   {
     title: "Manajemen Inventaris",
@@ -62,15 +58,11 @@ export const NAV_SECTIONS: NavSection[] = [
 export const PAGE_META: Record<string, { title: string; desc: string }> = {
   "dashboard-alert-center": {
     title: "Dashboard & Alert Center",
-    desc: "Ringkasan operasional gudang farmasi-lab hari ini: stok, suhu, pengadaan, dan seluruh peringatan aktif.",
-  },
-  "monitoring-suhu-chiller": {
-    title: "Monitoring Suhu & Chiller",
-    desc: "Pemantauan rantai dingin reagensia — pembacaan datalogger, rentang aman, dan riwayat suhu.",
+    desc: "Ringkasan pencatatan internal laboratorium: stok, pengadaan, pemakaian, dan seluruh peringatan aktif.",
   },
   "katalog-stok-reagensia": {
     title: "Katalog Stok & Reagensia",
-    desc: "Master data item laboratorium: stok terkini, lokasi rak, ambang minimum, dan valuasi.",
+    desc: "Master data item laboratorium: stok terkini, lokasi rak, ambang minimum, dan valuasi — dapat diubah & dihapus.",
   },
   "pelacakan-batch-lot": {
     title: "Pelacakan Batch & Lot",
@@ -82,15 +74,15 @@ export const PAGE_META: Record<string, { title: string; desc: string }> = {
   },
   "pencatatan-pemakaian-harian": {
     title: "Pencatatan Pemakaian Harian",
-    desc: "Catat barang keluar ke unit layanan; stok terpotong otomatis dan tercatat di log audit.",
+    desc: "Catat barang keluar untuk Lab Patologi Klinik & UPD; stok terpotong otomatis dan tercatat di log audit.",
   },
   "permintaan-stok-internal": {
     title: "Permintaan Stok Internal",
-    desc: "Persetujuan permintaan barang dari IGD, rawat inap, dan poliklinik ke gudang farmasi-lab.",
+    desc: "Persetujuan permintaan barang antar unit internal Lab Patologi Klinik & Unit Pelayanan Darah (UPD).",
   },
   "penerimaan-barang": {
     title: "Penerimaan Barang (Goods Receipt)",
-    desc: "Verifikasi FEFO & cold-chain saat barang datang, lalu masukkan batch ke stok aktif.",
+    desc: "Verifikasi barang datang — jumlah, lot, dan kedaluwarsa dapat disesuaikan dengan kondisi aktual kiriman.",
   },
   "purchase-order-e-katalog": {
     title: "PO & E-Katalog",
@@ -102,7 +94,7 @@ export const PAGE_META: Record<string, { title: string; desc: string }> = {
   },
   "laporan-mutasi-valuasi": {
     title: "Laporan Mutasi & Valuasi",
-    desc: "Rekapitulasi barang masuk-keluar dan nilai persediaan untuk pertanggungjawaban SIPD.",
+    desc: "Rekapitulasi barang masuk-keluar dan nilai persediaan untuk pelaporan internal laboratorium.",
   },
   "peringatan-fefo-expired": {
     title: "Peringatan FEFO & Expired",
@@ -115,7 +107,6 @@ export const PAGE_META: Record<string, { title: string; desc: string }> = {
 };
 
 export const LAB_UNITS = [
-  { value: "pk", label: "Patologi Klinik" },
-  { value: "mb", label: "Mikrobiologi" },
-  { value: "bd", label: "Bank Darah" },
+  { value: "pk", label: "Laboratorium Patologi Klinik" },
+  { value: "upd", label: "Unit Pelayanan Darah (UPD)" },
 ];

@@ -2,13 +2,12 @@ import { useEffect, useState } from "react";
 import { StoreProvider, useStore } from "./store/store";
 import { AuthProvider, useAuth } from "./store/auth";
 import { ToastProvider } from "./components/Toast";
-import LoginPage from "./pages/LoginPage";
 import { useHashRoute } from "./router";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import LoginPage from "./pages/LoginPage";
 import { PAGE_META } from "./data/labstock";
 import DashboardPage from "./pages/DashboardPage";
-import SuhuPage from "./pages/SuhuPage";
 import KatalogPage from "./pages/KatalogPage";
 import BatchPage from "./pages/BatchPage";
 import BmhpPage from "./pages/BmhpPage";
@@ -30,7 +29,6 @@ function Shell() {
   const page = (() => {
     switch (path) {
       case "dashboard-alert-center": return <DashboardPage navigate={navigate} />;
-      case "monitoring-suhu-chiller": return <SuhuPage />;
       case "katalog-stok-reagensia": return <KatalogPage />;
       case "pelacakan-batch-lot": return <BatchPage />;
       case "manajemen-bmhp-alkes": return <BmhpPage />;
@@ -55,7 +53,6 @@ function Shell() {
 
         <main className="min-h-screen w-full pt-16">
           <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4 px-4 py-5 md:px-6">
-            {/* Kepala halaman */}
             <header key={path} className="animate-rise">
               <h1 className="font-sans text-headline-lg tracking-tight text-on-surface">{meta.title}</h1>
               <p className="mt-1 max-w-2xl font-sans text-body-sm text-on-surface-variant">{meta.desc}</p>
@@ -68,9 +65,9 @@ function Shell() {
             <footer className="flex flex-col items-center justify-between gap-2 pb-2 pt-4 sm:flex-row">
               <div className="flex items-center gap-1.5 font-sans text-caption font-normal text-on-surface-variant">
                 <ShieldCheck className="h-4 w-4 text-primary" />
-                <span>Labstock RSUD SMJ 1 — Katalog &amp; Logistik Laboratorium · KARS &amp; ISO 15189</span>
+                <span>Labstock RSUD SMJ — Pencatatan &amp; Pelaporan Internal Laboratorium · KARS &amp; ISO 15189</span>
               </div>
-              <span className="font-mono text-data-mono-sm text-secondary">Sesi Gudang Farmasi Lt. 1 · WIB</span>
+              <span className="font-mono text-data-mono-sm text-secondary">Lab PK &amp; UPD · WIB</span>
             </footer>
           </div>
         </main>

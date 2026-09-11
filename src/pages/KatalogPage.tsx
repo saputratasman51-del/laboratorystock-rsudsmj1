@@ -1,25 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Minus, Search, Snowflake, ClipboardPlus } from "lucide-react";
-import { useHashParam } from "../router";
+import { Plus, Minus, Search, Snowflake, ClipboardPlus, PenLine, Trash2 } from "lucide-react";
 import {
-  Card, CardTitle, Badge, Btn, Modal, Field, inputCls, Empty,
+  Card, CardTitle, Badge, Btn, Modal, Field, inputCls, Empty, useArmable,
   thCls, tdCls, tableCls, theadCls, trCls,
 } from "../components/ui";
-import { useStore, fmtIDR, type Category } from "../store/store";
+import { useStore, fmtIDR, type Category, type Item } from "../store/store";
 import { useToast } from "../components/Toast";
+import { useHashParam } from "../router";
 import { cn } from "../utils/cn";
 
 const CATS = ["Semua", "Reagensia", "BMHP", "Alkes"];
 const CAT_TONE: Record<string, "info" | "warn" | "neutral"> = { Reagensia: "info", BMHP: "warn", Alkes: "neutral" };
 
+type FormState = { name: string; sku: string; category: Category; unit: string; stock: number; min: number; price: number; location: string; cold: boolean };
+const EMPTY_FORM: FormState = { name: "", sku: "", category: "Reagensia", unit: "Kit", stock: 0, min: 0, price: 0, location: "", cold: true };
+
 export default function KatalogPage() {
-  const { state, addItem, adjustStock } = useStore();
+  const { state, addItem, updateItem, deleteItem, adjustStock } = useStore();
   const push = useToast();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("Semua");
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Item | null>(null);
+  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const { armed, arm, disarm } = useArmable();
 
-  /* Hasil pindai SKU dari pemindai kamera */
   const qParam = useHashParam("q");
   useEffect(() => {
     if (qParam) {
@@ -27,8 +32,6 @@ export default function KatalogPage() {
       setCat("Semua");
     }
   }, [qParam]);
-
-  const [form, setForm] = useState({ name: "", sku: "", category: "Reagensia" as Category, unit: "Kit", stock: 0, min: 0, price: 0, location: "", cold: true });
 
   const rows = useMemo(() => {
     const k = q.trim().toLowerCase();
@@ -39,15 +42,32 @@ export default function KatalogPage() {
 
   const totalValue = rows.reduce((n, i) => n + i.stock * i.price, 0);
 
+  const openAdd = () => {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setOpen(true);
+  };
+  const openEdit = (i: Item) => {
+    setEditing(i);
+    setForm({ name: i.name, sku: i.sku, category: i.category, unit: i.unit, stock: i.stock, min: i.min, price: i.price, location: i.location, cold: i.cold });
+    setOpen(true);
+  };
+
   const submit = () => {
     if (!form.name.trim() || !form.sku.trim()) {
       push({ title: "Form belum lengkap", desc: "Nama item dan kode SKU wajib diisi.", tone: "danger" });
       return;
     }
-    addItem({ ...form, location: form.location || "Gudang B" });
+    if (editing) {
+      updateItem(editing.id, { ...form, location: form.location || "Gudang B" });
+      push({ title: "Item diperbarui", desc: `${form.name} berhasil disimpan.`, tone: "success" });
+    } else {
+      addItem({ ...form, location: form.location || "Gudang B" });
+      push({ title: "Item ditambahkan", desc: `${form.name} kini ada di katalog stok.`, tone: "success" });
+    }
     setOpen(false);
-    setForm({ name: "", sku: "", category: "Reagensia", unit: "Kit", stock: 0, min: 0, price: 0, location: "", cold: true });
-    push({ title: "Item ditambahkan", desc: `${form.name} kini ada di katalog stok.`, tone: "success" });
+    setForm(EMPTY_FORM);
+    setEditing(null);
   };
 
   return (
@@ -61,15 +81,12 @@ export default function KatalogPage() {
           <select value={cat} onChange={(e) => setCat(e.target.value)} className={cn(inputCls, "sm:w-44")}>
             {CATS.map((c) => <option key={c}>{c}</option>)}
           </select>
-          <Btn icon={Plus} onClick={() => setOpen(true)}>Tambah Item</Btn>
+          <Btn icon={Plus} onClick={openAdd}>Tambah Item</Btn>
         </div>
       </Card>
 
       <Card>
-        <CardTitle
-          title="Daftar Item"
-          desc={`${rows.length} item · total valuasi ${fmtIDR(totalValue)}`}
-        />
+        <CardTitle title="Daftar Item" desc={`${rows.length} item · total valuasi ${fmtIDR(totalValue)} · klik ikon untuk edit/hapus`} />
         <div className="overflow-x-auto rounded-lg ring-1 ring-surface-container">
           <table className={tableCls}>
             <thead className={theadCls}>
@@ -81,11 +98,13 @@ export default function KatalogPage() {
                 <th className={thCls}>Min.</th>
                 <th className={thCls}>Status</th>
                 <th className={cn(thCls, "text-right")}>Nilai Stok</th>
+                <th className={cn(thCls, "text-right")}>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((i) => {
                 const critical = i.stock <= i.min;
+                const isArmed = armed === i.id;
                 return (
                   <tr key={i.id} className={trCls}>
                     <td className={tdCls}>
@@ -100,8 +119,7 @@ export default function KatalogPage() {
                     <td className={tdCls}>
                       <div className="flex items-center gap-1.5">
                         <button
-                          type="button"
-                          aria-label="Kurangi stok"
+                          type="button" aria-label="Kurangi stok"
                           onClick={() => {
                             if (i.stock > 0) {
                               adjustStock(i.id, -1, "Koreksi manual katalog");
@@ -113,11 +131,10 @@ export default function KatalogPage() {
                           <Minus className="h-3.5 w-3.5" />
                         </button>
                         <span className={cn("min-w-10 text-center font-mono text-data-mono-md font-semibold", critical ? "text-error" : "text-on-surface")}>
-                          {i.stock} <span className="text-caption font-sans font-normal text-on-surface-variant">{i.unit}</span>
+                          {i.stock} <span className="font-sans text-caption font-normal text-on-surface-variant">{i.unit}</span>
                         </span>
                         <button
-                          type="button"
-                          aria-label="Tambah stok"
+                          type="button" aria-label="Tambah stok"
                           onClick={() => {
                             adjustStock(i.id, 1, "Koreksi manual katalog");
                             push({ title: `${i.name} +1 ${i.unit}`, desc: `Stok kini ${i.stock + 1} ${i.unit}.`, tone: "info" });
@@ -133,18 +150,49 @@ export default function KatalogPage() {
                       <Badge tone={critical ? "danger" : "ok"}>{critical ? "Kritis" : "Aman"}</Badge>
                     </td>
                     <td className={cn(tdCls, "text-right font-mono text-data-mono-sm")}>{fmtIDR(i.stock * i.price)}</td>
+                    <td className={cn(tdCls, "text-right")}>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button" title="Edit item"
+                          onClick={() => openEdit(i)}
+                          className="rounded-lg p-1.5 text-outline transition-colors hover:bg-surface-container-high hover:text-on-surface"
+                        >
+                          <PenLine className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button" title={isArmed ? "Klik lagi untuk konfirmasi hapus" : "Hapus item"}
+                          onClick={() => {
+                            if (isArmed) {
+                              deleteItem(i.id);
+                              disarm();
+                              push({ title: "Item dihapus", desc: `${i.name} beserta batch terkait dihapus dari katalog.`, tone: "danger" });
+                            } else {
+                              arm(i.id);
+                            }
+                          }}
+                          className={cn(
+                            "rounded-lg px-1.5 py-1.5 font-sans text-[11px] font-semibold transition-colors",
+                            isArmed
+                              ? "bg-error text-on-error"
+                              : "text-outline hover:bg-error-container hover:text-on-error-container"
+                          )}
+                        >
+                          {isArmed ? "Yakin?" : <Trash2 className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={7}><Empty title="Tidak ada item" desc="Ubah kata kunci atau tambahkan item baru." /></td></tr>
+                <tr><td colSpan={8}><Empty title="Tidak ada item" desc="Ubah kata kunci atau tambahkan item baru." /></td></tr>
               )}
             </tbody>
           </table>
         </div>
       </Card>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Tambah Item Katalog">
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? "Edit Item Katalog" : "Tambah Item Katalog"}>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Nama Item" className="col-span-2">
             <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="cth. Reagen CRP Latex" />
@@ -163,14 +211,14 @@ export default function KatalogPage() {
           <Field label="Lokasi Rak">
             <input className={inputCls} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Chiller A · Rak 4" />
           </Field>
-          <Field label="Stok Awal">
-            <input type="number" className={inputCls} value={form.stock} onChange={(e) => setForm({ ...form, stock: +e.target.value })} />
+          <Field label="Stok Saat Ini">
+            <input type="number" className={inputCls} value={form.stock} onChange={(e) => setForm({ ...form, stock: Math.max(0, +e.target.value) })} />
           </Field>
           <Field label="Stok Minimum">
-            <input type="number" className={inputCls} value={form.min} onChange={(e) => setForm({ ...form, min: +e.target.value })} />
+            <input type="number" className={inputCls} value={form.min} onChange={(e) => setForm({ ...form, min: Math.max(0, +e.target.value) })} />
           </Field>
           <Field label="Harga Satuan (Rp)" className="col-span-2">
-            <input type="number" className={inputCls} value={form.price} onChange={(e) => setForm({ ...form, price: +e.target.value })} />
+            <input type="number" className={inputCls} value={form.price} onChange={(e) => setForm({ ...form, price: Math.max(0, +e.target.value) })} />
           </Field>
           <label className="col-span-2 flex cursor-pointer items-center gap-2 font-sans text-body-md text-on-surface">
             <input type="checkbox" checked={form.cold} onChange={(e) => setForm({ ...form, cold: e.target.checked })} className="h-4 w-4 accent-primary" />
@@ -179,7 +227,7 @@ export default function KatalogPage() {
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Btn tone="ghost" onClick={() => setOpen(false)}>Batal</Btn>
-          <Btn icon={ClipboardPlus} onClick={submit}>Simpan Item</Btn>
+          <Btn icon={ClipboardPlus} onClick={submit}>{editing ? "Simpan Perubahan" : "Simpan Item"}</Btn>
         </div>
       </Modal>
     </div>
