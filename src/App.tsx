@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { StoreProvider } from "./store/store";
+import { useEffect, useState } from "react";
+import { StoreProvider, useStore } from "./store/store";
+import { AuthProvider, useAuth } from "./store/auth";
 import { ToastProvider } from "./components/Toast";
+import LoginPage from "./pages/LoginPage";
 import { useHashRoute } from "./router";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
@@ -77,12 +79,26 @@ function Shell() {
   );
 }
 
+function Gate() {
+  const { session } = useAuth();
+  const { setActor } = useStore();
+
+  useEffect(() => {
+    if (session) setActor(session.name);
+  }, [session, setActor]);
+
+  if (!session) return <LoginPage />;
+  return <Shell key={session.id} />;
+}
+
 export default function App() {
   return (
-    <StoreProvider>
-      <ToastProvider>
-        <Shell />
-      </ToastProvider>
-    </StoreProvider>
+    <AuthProvider>
+      <StoreProvider>
+        <ToastProvider>
+          <Gate />
+        </ToastProvider>
+      </StoreProvider>
+    </AuthProvider>
   );
 }

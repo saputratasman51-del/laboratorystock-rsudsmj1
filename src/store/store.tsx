@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useReducer, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from "react";
 
 /* ── Helper tanggal & format ─────────────────────────────────────────────── */
 export const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -56,6 +56,7 @@ export type AuditLog = { id: string; at: string; actor: string; module: string; 
 export type State = {
   items: Item[]; batches: Batch[]; temps: TempLog[]; usages: Usage[];
   requests: StockRequest[]; pos: PO[]; vendors: Vendor[]; audit: AuditLog[];
+  actor: string;
 };
 
 const ACTOR = "dr. Ratna Dewi, Sp.PK";
@@ -71,6 +72,7 @@ const tempHistory = (device: string, base: number, by: string): TempLog[] =>
   }));
 
 const SEED: State = {
+  actor: ACTOR,
   items: [
     { id: "ITM-001", name: "Reagen HbA1c Direct", sku: "RGN-HBA1C-DR", category: "Reagensia", unit: "Kit", stock: 14, min: 10, price: 4425000, location: "Chiller A · Rak 2", cold: true },
     { id: "ITM-002", name: "Cellclean Sysmex 50ml", sku: "RGN-CLN-SMX", category: "Reagensia", unit: "Botol", stock: 13, min: 6, price: 1210000, location: "Chiller A · Rak 3", cold: true },
@@ -150,6 +152,21 @@ const SEED: State = {
   ],
 };
 
+/* ── Persistensi data operasional (localStorage) ─────────────────────────── */
+const DATA_KEY = "labstock-data-v1";
+
+const initialState = (): State => {
+  try {
+    const raw = window.localStorage.getItem(DATA_KEY);
+    if (!raw) return SEED;
+    const parsed = JSON.parse(raw) as State;
+    if (!parsed || !Array.isArray(parsed.items) || !Array.isArray(parsed.audit)) return SEED;
+    return { ...SEED, ...parsed };
+  } catch {
+    return SEED;
+  }
+};
+
 /* ── Reducer ─────────────────────────────────────────────────────────────── */
 type Action =
   | { type: "CONFIRM_RECEIPT"; poId: string }
@@ -163,10 +180,12 @@ type Action =
   | { type: "ADD_VENDOR"; vendor: Omit<Vendor, "id"> }
   | { type: "ADD_TEMP"; device: string; value: number }
   | { type: "TOGGLE_PRIORITY"; batchId: string }
-  | { type: "DISPOSE_BATCH"; batchId: string };
+  | { type: "DISPOSE_BATCH"; batchId: string }
+  | { type: "SET_ACTOR"; name: string }
+  | { type: "LOG"; module: string; action: string; detail: string };
 
 const log = (s: State, module: string, action: string, detail: string): AuditLog[] =>
-  [{ id: uid(), at: `${todayISO()} ${nowTime()}`, actor: ACTOR, module, action, detail }, ...s.audit].slice(0, 150);
+  [{ id: uid(), at: `${todayISO()} ${nowTime()}`, actor: s.actor, module, action, detail }, ...s.audit].slice(0, 150);
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
@@ -198,7 +217,7 @@ function reducer(s: State, a: Action): State {
       return {
         ...s,
         items: s.items.map((i) => (i.id === a.itemId ? { ...i, stock: i.stock - a.qty } : i)),
-        usages: [{ id: uid(), date: todayISO(), itemId: a.itemId, qty: a.qty, toUnit: a.toUnit, user: ACTOR, note: a.note }, ...s.usages],
+        usages: [{ id: uid(), date: todayISO(), itemId: a.itemId, qty: a.qty, toUnit: a.toUnit, user: s.actor, note: a.note }, ...s.usages],
         audit: log(s, "Pemakaian", "Pemakaian dicatat", `${it.name} -${a.qty} ${it.unit} → ${a.toUnit}`),
       };
     }
@@ -240,7 +259,7 @@ function reducer(s: State, a: Action): State {
             : s.items,
         usages:
           a.status === "Disetujui" && it
-            ? [{ id: uid(), date: todayISO(), itemId: req.itemId, qty: req.qty, toUnit: req.fromUnit, user: ACTOR, note: `Permintaan ${req.id}` }, ...s.usages]
+            ? [{ id: uid(), date: todayISO(), itemId: req.itemId, qty: req.qty, toUnit: req.fromUnit, user: s.actor, note: `Permintaan ${req.id}` }, ...s.usages]
             : s.usages,
         audit: log(s, "Permintaan", `Permintaan ${a.status.toLowerCase()}`, `${req.id}: ${it?.name ?? ""} × ${req.qty} untuk ${req.fromUnit}`),
       };
@@ -300,6 +319,10 @@ function reducer(s: State, a: Action): State {
         audit: log(s, "Kepatuhan", "Pemusnahan dicatat", `Lot ${b.lot} (${it?.name}) ${b.qty} unit dimusnahkan sesuai BAP`),
       };
     }
+    case "SET_ACTOR":
+      return { ...s, actor: a.name };
+    case "LOG":
+      return { ...s, audit: log(s, a.module, a.action, a.detail) };
     default:
       return s;
   }
@@ -323,6 +346,8 @@ type Store = {
   disposeBatch: (batchId: string) => void;
   itemOf: (id: string) => Item | undefined;
   vendorOf: (id: string) => Vendor | undefined;
+  setActor: (name: string) => void;
+  logEvent: (module: string, action: string, detail: string) => void;
 };
 
 const StoreCtx = createContext<Store | null>(null);
@@ -333,7 +358,16 @@ export const useStore = () => {
 };
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, SEED);
+  const [state, dispatch] = useReducer(reducer, SEED, initialState);
+
+  /* Simpan setiap perubahan data agar tidak hilang saat refresh */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DATA_KEY, JSON.stringify(state));
+    } catch {
+      /* penyimpanan penuh — abaikan */
+    }
+  }, [state]);
 
   const api = useMemo<Store>(() => {
     const it = (id: string) => state.items.find((i) => i.id === id);
@@ -350,6 +384,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       togglePriority: (batchId) => dispatch({ type: "TOGGLE_PRIORITY", batchId }),
       disposeBatch: (batchId) => dispatch({ type: "DISPOSE_BATCH", batchId }),
       advancePO: (id) => dispatch({ type: "ADVANCE_PO", id }),
+      setActor: (name) => dispatch({ type: "SET_ACTOR", name }),
+      logEvent: (module, action, detail) => dispatch({ type: "LOG", module, action, detail }),
       addUsage: (itemId, qty, toUnit, note) => {
         const item = it(itemId);
         if (!item) return { ok: false, error: "Item tidak ditemukan." };

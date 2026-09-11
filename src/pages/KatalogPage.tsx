@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Minus, Search, Snowflake, ClipboardPlus } from "lucide-react";
+import { useHashParam } from "../router";
 import {
   Card, CardTitle, Badge, Btn, Modal, Field, inputCls, Empty,
   thCls, tdCls, tableCls, theadCls, trCls,
@@ -17,6 +18,15 @@ export default function KatalogPage() {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("Semua");
   const [open, setOpen] = useState(false);
+
+  /* Hasil pindai SKU dari pemindai kamera */
+  const qParam = useHashParam("q");
+  useEffect(() => {
+    if (qParam) {
+      setQ(qParam);
+      setCat("Semua");
+    }
+  }, [qParam]);
 
   const [form, setForm] = useState({ name: "", sku: "", category: "Reagensia" as Category, unit: "Kit", stock: 0, min: 0, price: 0, location: "", cold: true });
 

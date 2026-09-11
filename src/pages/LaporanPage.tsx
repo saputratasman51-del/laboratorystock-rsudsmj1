@@ -32,6 +32,37 @@ export default function LaporanPage() {
   const stockValue = state.items.reduce((n, i) => n + i.stock * i.price, 0);
   const poActive = state.pos.filter((p) => p.status !== "Diterima").reduce((n, p) => n + p.value, 0);
 
+  /* Agregasi mutasi 6 bulan terakhir dari data nyata */
+  const monthly = useMemo(() => {
+    const now = new Date();
+    const buckets = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      return {
+        key: `${d.getFullYear()}-${d.getMonth()}`,
+        label: d.toLocaleDateString("id-ID", { month: "short" }),
+        masuk: 0,
+        keluar: 0,
+      };
+    });
+    const keyOf = (s: string) => {
+      const d = new Date(s + "T00:00:00");
+      return `${d.getFullYear()}-${d.getMonth()}`;
+    };
+    const priceOf = (id: string) => state.items.find((i) => i.id === id)?.price ?? 0;
+    state.batches.forEach((b) => {
+      const m = buckets.find((x) => x.key === keyOf(b.receivedAt));
+      if (m) m.masuk += priceOf(b.itemId) * b.qty;
+    });
+    state.usages.forEach((u) => {
+      const m = buckets.find((x) => x.key === keyOf(u.date));
+      if (m) m.keluar += priceOf(u.itemId) * u.qty;
+    });
+    return buckets;
+  }, [state.batches, state.usages, state.items]);
+
+  const inBars = monthly.map((m) => ({ label: m.label, value: Math.round(m.masuk / 1e6) }));
+  const outBars = monthly.map((m) => ({ label: m.label, value: Math.round(m.keluar / 1e6) }));
+
   const exportCSV = () => {
     const header = "Tanggal;Tipe;Referensi;Item;Qty;Satuan;Nilai (Rp)\n";
     const body = mutations.map((m) => `${m.date};${m.type};${m.ref};${m.item};${m.type === "Keluar" ? "-" : "+"}${m.qty};${m.unit};${m.value}`).join("\n");
@@ -57,17 +88,11 @@ export default function LaporanPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardTitle title="Barang Masuk — 6 Bulan" desc="Penerimaan per bulan (Rp Juta)" />
-          <Bars h={120} data={[
-            { label: "Okt", value: 182 }, { label: "Nov", value: 240 }, { label: "Des", value: 196 },
-            { label: "Jan", value: 310 }, { label: "Feb", value: 264 }, { label: "Mar", value: Math.round(totalIn / 1e6) },
-          ]} />
+          <Bars h={120} data={inBars} />
         </Card>
         <Card>
           <CardTitle title="Barang Keluar — 6 Bulan" desc="Pemakaian per bulan (Rp Juta)" />
-          <Bars h={120} color="#005a6a" data={[
-            { label: "Okt", value: 160 }, { label: "Nov", value: 198 }, { label: "Des", value: 188 },
-            { label: "Jan", value: 274 }, { label: "Feb", value: 238 }, { label: "Mar", value: Math.max(1, Math.round(totalOut / 1e6)) },
-          ]} />
+          <Bars h={120} color="#005a6a" data={outBars} />
         </Card>
       </div>
 

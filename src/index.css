@@ -220,4 +220,28 @@
   .animate-scanline {
     animation: scanline 2.4s ease-in-out infinite;
   }
+  .animate-qr-radar {
+    animation: qr-radar 2.4s ease-in-out infinite;
+  }
+}
+
+/* ── Pemindai QR ─────────────────────────────────────────────────────────── */
+@keyframes qr-radar {
+  0%,
+  100% {
+    top: 7%;
+  }
+  50% {
+    top: 89%;
+  }
+}
+
+#qr-reader video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+
+#qr-reader img {
+  display: none;
 }

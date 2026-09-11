@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { BadgeCheck, Boxes, Ban, CheckCheck, Truck, ReceiptText, Thermometer, Package, Snowflake } from "lucide-react";
+import { BadgeCheck, Boxes, Ban, CheckCheck, Truck, ReceiptText, Thermometer, Package, Snowflake, ScanLine } from "lucide-react";
 import { Card, CardTitle, Badge, Btn, Empty, thCls, tdCls, tableCls, theadCls, trCls } from "../components/ui";
 import { useStore, daysFromNow, fmtDate, fmtIDR } from "../store/store";
 import { useToast } from "../components/Toast";
+import QRScannerModal from "../components/QRScannerModal";
+import type { ScanHit } from "../utils/scan";
 import { cn } from "../utils/cn";
 
 const CHECKS = [
@@ -20,6 +22,23 @@ export default function PenerimaanPage() {
   const [selId, setSelId] = useState<string>(incoming[0]?.id ?? "");
   const [checks, setChecks] = useState<Record<string, boolean>>(Object.fromEntries(CHECKS.map((c) => [c.id, true])));
   const [doneId, setDoneId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+
+  const openScanHit = (hit: ScanHit) => {
+    setScanOpen(false);
+    const target = hit.kind === "po" && hit.refId ? state.pos.find((p) => p.id === hit.refId) : undefined;
+    if (target && target.status === "Dikirim") {
+      setDoneId(null);
+      setSelId(target.id);
+      push({ title: "Dokumen PO terpindai", desc: `${target.po} dibuka pada panel verifikasi.`, tone: "success" });
+    } else {
+      push({
+        title: hit.title,
+        desc: hit.kind === "po" ? "PO ini tidak berstatus Dikirim — belum bisa diverifikasi." : hit.desc,
+        tone: "info",
+      });
+    }
+  };
 
   const activeId = doneId ? "" : incoming.find((p) => p.id === selId)?.id ?? incoming[0]?.id ?? "";
   const po = incoming.find((p) => p.id === activeId);
@@ -33,7 +52,15 @@ export default function PenerimaanPage() {
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
       {/* Antrian kedatangan */}
       <Card className="h-fit xl:sticky xl:top-20">
-        <CardTitle title="Antrian Kedatangan" desc={`${incoming.length} pengiriman menunggu verifikasi`} />
+        <CardTitle
+          title="Antrian Kedatangan"
+          desc={`${incoming.length} pengiriman menunggu verifikasi`}
+          action={
+            <Btn tone="soft" icon={ScanLine} className="h-8 px-2.5" onClick={() => setScanOpen(true)}>
+              Pindai
+            </Btn>
+          }
+        />
         <div className="flex flex-col gap-2">
           {incoming.map((p) => (
             <button
@@ -260,6 +287,8 @@ export default function PenerimaanPage() {
           </div>
         </Card>
       </div>
+
+      {scanOpen && <QRScannerModal onClose={() => setScanOpen(false)} onOpen={openScanHit} />}
     </div>
   );
 }

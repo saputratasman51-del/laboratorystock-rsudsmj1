@@ -4,11 +4,12 @@ import {
 } from "lucide-react";
 import { Card, CardTitle, Stat, Bars, Spark, Badge, Btn } from "../components/ui";
 import { useStore, useAlerts, daysFromNow, fmtIDRShort, fmtIDR, fmtDate } from "../store/store";
+import type { NavigateFn } from "../router";
 import { cn } from "../utils/cn";
 
 const DEVICES = ["Chiller A", "Chiller B", "Freezer -20°C"] as const;
 
-export default function DashboardPage({ navigate }: { navigate: (p: string) => void }) {
+export default function DashboardPage({ navigate }: { navigate: NavigateFn }) {
   const { state } = useStore();
   const alerts = useAlerts();
 

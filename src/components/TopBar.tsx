@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
-import { Bell, CalendarX, Inbox, Menu, ScanBarcode, Thermometer, TriangleAlert, User } from "lucide-react";
+import { Bell, CalendarX, Inbox, Menu, ScanBarcode, Thermometer, TriangleAlert, LogOut, History, ChevronDown, UserCog, UsersRound } from "lucide-react";
 import { PAGE_META } from "../data/labstock";
-import { useAlerts } from "../store/store";
+import { useAlerts, useStore } from "../store/store";
+import { useAuth } from "../store/auth";
 import { useToast } from "./Toast";
+import { AccountSettingsModal, AdminAccountsModal } from "./AccountModals";
+import QRScannerModal from "./QRScannerModal";
+import type { NavigateFn } from "../router";
+import type { ScanHit } from "../utils/scan";
 import { cn } from "../utils/cn";
 
 const TONE_ICON = { danger: TriangleAlert, warn: CalendarX, info: Inbox };
@@ -14,10 +19,22 @@ const TONE_TILE = {
 
 export default function TopBar({
   onMenu, path, navigate,
-}: { onMenu: () => void; path: string; navigate: (p: string) => void }) {
+}: { onMenu: () => void; path: string; navigate: NavigateFn }) {
   const push = useToast();
   const alerts = useAlerts();
+  const { session, logout } = useAuth();
+  const { logEvent } = useStore();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [userOpen, setUserOpen] = useState(false);
+  const [accOpen, setAccOpen] = useState(false);
+  const [admOpen, setAdmOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+
+  const openScanHit = (hit: ScanHit) => {
+    setScanOpen(false);
+    navigate(hit.path, { q: hit.query });
+    push({ title: hit.title, desc: hit.desc, tone: "success" });
+  };
   const [read, setRead] = useState(false);
   const [temp, setTemp] = useState(4.2);
 
@@ -54,11 +71,8 @@ export default function TopBar({
       <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          title="Pindai Barcode/QR — ke Pelacakan Batch"
-          onClick={() => {
-            navigate("pelacakan-batch-lot");
-            push({ title: "Mode pindai aktif", desc: "Masukkan atau pindai nomor lot pada kolom pencarian.", tone: "info" });
-          }}
+          title="Pindai Barcode/QR dengan kamera"
+          onClick={() => setScanOpen(true)}
           className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 font-sans text-title-sm text-on-primary shadow-sm transition-colors hover:bg-primary-container"
         >
           <ScanBarcode className="h-4 w-4" />
@@ -140,16 +154,99 @@ export default function TopBar({
           )}
         </div>
 
-        <div className="flex items-center gap-2 pl-1">
-          <div className="hidden min-w-0 flex-col items-end md:flex">
-            <span className="truncate font-sans text-title-sm leading-tight text-on-surface">dr. Ratna Dewi, Sp.PK</span>
-            <span className="truncate font-sans text-caption text-on-surface-variant">Kepala Lab / Super Admin</span>
-          </div>
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary shadow-sm">
-            <User className="h-[18px] w-[18px] text-on-primary" />
-          </div>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setUserOpen((v) => !v)}
+            className={cn(
+              "flex items-center gap-2 rounded-lg p-1 pl-1.5 transition-colors",
+              userOpen ? "bg-surface-container-high" : "hover:bg-surface-container-high"
+            )}
+            aria-label="Menu akun"
+          >
+            <div className="hidden min-w-0 flex-col items-end md:flex">
+              <span className="max-w-44 truncate font-sans text-title-sm leading-tight text-on-surface">
+                {session?.name.split(",")[0]}
+              </span>
+              <span className="max-w-44 truncate font-sans text-caption text-on-surface-variant">{session?.role}</span>
+            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary font-sans text-[12px] font-bold text-on-primary shadow-sm">
+              {session?.initial}
+            </div>
+            <ChevronDown className={cn("hidden h-3.5 w-3.5 text-outline transition-transform sm:block", userOpen && "rotate-180")} />
+          </button>
+
+          {userOpen && (
+            <>
+              <button aria-label="Tutup menu akun" className="fixed inset-0 z-40 cursor-default" onClick={() => setUserOpen(false)} type="button" />
+              <div className="absolute right-0 top-12 z-50 w-64 animate-toast-in overflow-hidden rounded-xl bg-surface-container-lowest shadow-pop ring-1 ring-on-surface/5">
+                <div className="flex items-center gap-3 bg-surface-container-low px-4 py-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary font-sans text-title-sm text-on-primary">
+                    {session?.initial}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate font-sans text-title-sm text-on-surface">{session?.name}</div>
+                    <div className="truncate font-sans text-caption font-normal text-on-surface-variant">{session?.role}</div>
+                    <div className="font-mono text-data-mono-sm text-secondary">@{session?.username}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserOpen(false);
+                    navigate("log-audit-kars-iso");
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left font-sans text-body-md text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface"
+                >
+                  <History className="h-4 w-4" />
+                  Aktivitas Saya di Log Audit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserOpen(false);
+                    setAccOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left font-sans text-body-md text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface"
+                >
+                  <UserCog className="h-4 w-4" />
+                  Pengaturan Akun
+                </button>
+                {session?.roleKey === "superadmin" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserOpen(false);
+                      setAdmOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left font-sans text-body-md text-on-surface-variant transition-colors hover:bg-surface-container-low hover:text-on-surface"
+                  >
+                    <UsersRound className="h-4 w-4" />
+                    Kelola Akun Petugas
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    logEvent("Kepatuhan", "Logout", `${session?.name} keluar dari sistem`);
+                    setUserOpen(false);
+                    logout();
+                    push({ title: "Anda telah keluar", desc: "Sesi ditutup dengan aman. Sampai jumpa.", tone: "info" });
+                  }}
+                  className="flex w-full items-center gap-2.5 border-t border-surface-container px-4 py-2.5 text-left font-sans text-body-md font-medium text-error transition-colors hover:bg-error-container"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Keluar dari Sistem
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {accOpen && <AccountSettingsModal onClose={() => setAccOpen(false)} />}
+      {admOpen && <AdminAccountsModal onClose={() => setAdmOpen(false)} />}
+      {scanOpen && <QRScannerModal onClose={() => setScanOpen(false)} onOpen={openScanHit} />}
     </header>
   );
 }

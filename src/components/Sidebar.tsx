@@ -3,6 +3,7 @@ import { ChevronDown, X } from "lucide-react";
 import { NAV_SECTIONS, LAB_UNITS } from "../data/labstock";
 import { useStore, daysUntil } from "../store/store";
 import { useToast } from "./Toast";
+import type { NavigateFn } from "../router";
 import { cn } from "../utils/cn";
 
 function LogoMark() {
@@ -29,7 +30,7 @@ function LogoMark() {
 
 export default function Sidebar({
   open, onClose, path, navigate,
-}: { open: boolean; onClose: () => void; path: string; navigate: (p: string) => void }) {
+}: { open: boolean; onClose: () => void; path: string; navigate: NavigateFn }) {
   const [unit, setUnit] = useState("pk");
   const push = useToast();
   const { state } = useStore();

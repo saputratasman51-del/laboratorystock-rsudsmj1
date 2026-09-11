@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
-import { Search, Star, Trash2, CalendarDays, QrCode } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search, Star, Trash2, CalendarDays, QrCode, ScanLine } from "lucide-react";
 import { Card, Badge, Btn, Empty, inputCls, thCls, tdCls, tableCls, theadCls, trCls } from "../components/ui";
 import { useStore, daysUntil, fmtDate, fmtIDR } from "../store/store";
 import { useToast } from "../components/Toast";
+import QRScannerModal from "../components/QRScannerModal";
+import { useHashParam } from "../router";
+import type { ScanHit } from "../utils/scan";
 import { cn } from "../utils/cn";
 
 /** QR semu berbasis hash lot — identitas visual nomor batch */
@@ -32,6 +35,23 @@ export default function BatchPage() {
   const push = useToast();
   const [q, setQ] = useState("");
   const [selId, setSelId] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+
+  /* Hasil pindai dari halaman lain (#/...?q=lot) — isi pencarian & seleksi lot */
+  const qParam = useHashParam("q");
+  useEffect(() => {
+    if (!qParam) return;
+    setQ(qParam);
+    const exact = state.batches.find((b) => b.lot.toLowerCase() === qParam.toLowerCase());
+    if (exact) setSelId(exact.id);
+  }, [qParam, state.batches]);
+
+  const openScanHit = (hit: ScanHit) => {
+    setScanOpen(false);
+    setQ(hit.query);
+    if (hit.kind === "batch" && hit.refId) setSelId(hit.refId);
+    push({ title: hit.title, desc: hit.desc, tone: hit.kind === "unknown" ? "info" : "success" });
+  };
 
   const rows = useMemo(() => {
     const k = q.trim().toLowerCase();
@@ -48,14 +68,17 @@ export default function BatchPage() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-outline" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Cari / pindai nomor lot, nama item, atau supplier..."
-            className={cn(inputCls, "pl-9")}
-          />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-outline" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Cari / pindai nomor lot, nama item, atau supplier..."
+              className={cn(inputCls, "pl-9")}
+            />
+          </div>
+          <Btn icon={ScanLine} onClick={() => setScanOpen(true)}>Pindai QR</Btn>
         </div>
         <p className="mt-2 flex items-center gap-1.5 font-sans text-caption font-normal text-on-surface-variant">
           <CalendarDays className="h-3.5 w-3.5 text-primary" />
@@ -158,6 +181,8 @@ export default function BatchPage() {
           </table>
         </div>
       </Card>
+
+      {scanOpen && <QRScannerModal onClose={() => setScanOpen(false)} onOpen={openScanHit} />}
     </div>
   );
 }

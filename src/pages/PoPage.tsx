@@ -6,6 +6,7 @@ import {
 } from "../components/ui";
 import { useStore, fmtDate, fmtIDR, type POStatus } from "../store/store";
 import { useToast } from "../components/Toast";
+import type { NavigateFn } from "../router";
 import { cn } from "../utils/cn";
 
 const TABS: ("Semua" | POStatus)[] = ["Semua", "Draft", "Diajukan", "Disetujui", "Dikirim", "Diterima"];
@@ -19,7 +20,7 @@ const NEXT_LABEL: Record<string, { label: string; icon: typeof Send }> = {
   Dikirim: { label: "Ke Penerimaan", icon: Package },
 };
 
-export default function PoPage({ navigate }: { navigate: (p: string) => void }) {
+export default function PoPage({ navigate }: { navigate: NavigateFn }) {
   const { state, itemOf, vendorOf, advancePO, addPO } = useStore();
   const push = useToast();
   const [tab, setTab] = useState<(typeof TABS)[number]>("Semua");
