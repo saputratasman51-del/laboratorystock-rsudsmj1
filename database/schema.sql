@@ -1,7 +1,21 @@
 -- ===========================================================================
 --  Labstock RSUD SMJ 1 — Database Schema (Supabase)
 --  Skema untuk sistem manajemen stok laboratorium
+--  Untuk re-run yang aman, semua tabel dihapus dulu (CASCADE).
 -- ===========================================================================
+
+-- Hapus semua tabel yang ada (urutan: child → parent)
+drop table if exists public.receipt_lines   cascade;
+drop table if exists public.po_lines        cascade;
+drop table if exists public.purchase_orders cascade;
+drop table if exists public.stock_requests  cascade;
+drop table if exists public.usages          cascade;
+drop table if exists public.batches         cascade;
+drop table if exists public.items           cascade;
+drop table if exists public.temp_logs       cascade;
+drop table if exists public.vendors         cascade;
+drop table if exists public.audit_logs      cascade;
+drop function if exists public.handle_updated_at cascade;
 
 ---------------------------------------------------------------------------
 -- 1. profiles — akun pengguna yang dapat login
