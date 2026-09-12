@@ -12,6 +12,7 @@ import {
   ChartColumn,
   CalendarX,
   ShieldCheck,
+  Thermometer,
 } from "lucide-react";
 
 export type NavItem = { id: string; label: string; icon: LucideIcon };
@@ -50,6 +51,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: "laporan-mutasi-valuasi", label: "Laporan Mutasi & Valuasi", icon: ChartColumn },
       { id: "peringatan-fefo-expired", label: "Peringatan FEFO & Expired", icon: CalendarX },
+      { id: "monitoring-suhu-cold-chain", label: "Monitoring Suhu Cold-Chain", icon: Thermometer },
       { id: "log-audit-kars-iso", label: "Log Audit (KARS & ISO)", icon: ShieldCheck },
     ],
   },
@@ -99,6 +101,10 @@ export const PAGE_META: Record<string, { title: string; desc: string }> = {
   "peringatan-fefo-expired": {
     title: "Peringatan FEFO & Expired",
     desc: "Batch mendekati kedaluwarsa — tandai prioritas pemakaian atau catat pemusnahan.",
+  },
+  "monitoring-suhu-cold-chain": {
+    title: "Monitoring Suhu Cold-Chain",
+    desc: "Pembacaan suhu otomatis Chiller & Freezer — pantau rentang aman cold-chain sesuai standar KARS.",
   },
   "log-audit-kars-iso": {
     title: "Log Audit (KARS & ISO)",
