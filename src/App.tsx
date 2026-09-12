@@ -18,8 +18,9 @@ import PoPage from "./pages/PoPage";
 import VendorPage from "./pages/VendorPage";
 import LaporanPage from "./pages/LaporanPage";
 import FefoPage from "./pages/FefoPage";
+import SuhuPage from "./pages/SuhuPage";
 import AuditPage from "./pages/AuditPage";
-import { ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 
 function Shell() {
   const [path, navigate] = useHashRoute();
@@ -39,6 +40,7 @@ function Shell() {
       case "daftar-vendor-supplier": return <VendorPage />;
       case "laporan-mutasi-valuasi": return <LaporanPage />;
       case "peringatan-fefo-expired": return <FefoPage />;
+      case "monitoring-suhu-cold-chain": return <SuhuPage />;
       case "log-audit-kars-iso": return <AuditPage />;
       default: return <DashboardPage navigate={navigate} />;
     }
@@ -77,12 +79,23 @@ function Shell() {
 }
 
 function Gate() {
-  const { session } = useAuth();
+  const { session, ready } = useAuth();
   const { setActor } = useStore();
 
   useEffect(() => {
     if (session) setActor(session.name);
   }, [session, setActor]);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex items-center gap-3 font-sans text-body-md text-on-surface-variant">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          Memuat data laboratorium…
+        </div>
+      </div>
+    );
+  }
 
   if (!session) return <LoginPage />;
   return <Shell key={session.id} />;

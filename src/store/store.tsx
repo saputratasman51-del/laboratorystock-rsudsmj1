@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useReducer, useState, type ReactNode } from "react";
+import { supabase } from "../lib/supabase";
 
 /* ── Helper tanggal & format ─────────────────────────────────────────────── */
 export const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -57,10 +58,12 @@ export type Vendor = {
   ekatalog: boolean; rating: number;
 };
 export type AuditLog = { id: string; at: string; actor: string; module: string; action: string; detail: string };
+export type TempLog = { id: string; at: string; device: string; value: number; by: string };
 
 export type State = {
   items: Item[]; batches: Batch[]; usages: Usage[];
   requests: StockRequest[]; pos: PO[]; vendors: Vendor[]; audit: AuditLog[];
+  temps: TempLog[];
   actor: string;
 };
 
@@ -144,6 +147,32 @@ const SEED: State = {
     { id: "A-03", at: `${daysFromNow(0)} 07:05`, actor: ACTOR, module: "Pemakaian", action: "Pemakaian dicatat", detail: "Reagen HbA1c Direct -2 Kit → Laboratorium Patologi Klinik (Run pagi)" },
     { id: "A-04", at: `${daysFromNow(0)} 08:15`, actor: ACTOR, module: "Kepatuhan", action: "Ekspor log audit", detail: "Periode Februari 2025 untuk asesor KARS (PDF terenkripsi)" },
   ],
+  temps: [
+    { id: "TL-CHILLER-A-0", at: "00:00", device: "Chiller A",       value: 4.2, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-1", at: "03:00", device: "Chiller A",       value: 3.9, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-2", at: "06:00", device: "Chiller A",       value: 4.0, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-3", at: "09:00", device: "Chiller A",       value: 3.8, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-4", at: "12:00", device: "Chiller A",       value: 4.1, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-5", at: "15:00", device: "Chiller A",       value: 3.9, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-6", at: "18:00", device: "Chiller A",       value: 4.2, by: "Auto-Logger" },
+    { id: "TL-CHILLER-A-7", at: "21:00", device: "Chiller A",       value: 4.0, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-0", at: "00:00", device: "Chiller B",       value: 3.6, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-1", at: "03:00", device: "Chiller B",       value: 3.4, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-2", at: "06:00", device: "Chiller B",       value: 3.7, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-3", at: "09:00", device: "Chiller B",       value: 3.5, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-4", at: "12:00", device: "Chiller B",       value: 3.8, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-5", at: "15:00", device: "Chiller B",       value: 3.6, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-6", at: "18:00", device: "Chiller B",       value: 3.4, by: "Auto-Logger" },
+    { id: "TL-CHILLER-B-7", at: "21:00", device: "Chiller B",       value: 3.7, by: "Auto-Logger" },
+    { id: "TL-FREEZER-0",   at: "00:00", device: "Freezer -20°C",   value: -20.3, by: "Auto-Logger" },
+    { id: "TL-FREEZER-1",   at: "03:00", device: "Freezer -20°C",   value: -20.1, by: "Auto-Logger" },
+    { id: "TL-FREEZER-2",   at: "06:00", device: "Freezer -20°C",   value: -19.9, by: "Auto-Logger" },
+    { id: "TL-FREEZER-3",   at: "09:00", device: "Freezer -20°C",   value: -20.0, by: "Auto-Logger" },
+    { id: "TL-FREEZER-4",   at: "12:00", device: "Freezer -20°C",   value: -20.2, by: "Auto-Logger" },
+    { id: "TL-FREEZER-5",   at: "15:00", device: "Freezer -20°C",   value: -20.1, by: "Auto-Logger" },
+    { id: "TL-FREEZER-6",   at: "18:00", device: "Freezer -20°C",   value: -19.8, by: "Auto-Logger" },
+    { id: "TL-FREEZER-7",   at: "21:00", device: "Freezer -20°C",   value: -20.0, by: "Auto-Logger" },
+  ],
 };
 
 /* ── Persistensi data operasional (localStorage) ─────────────────────────── */
@@ -154,7 +183,7 @@ const initialState = (): State => {
     const raw = window.localStorage.getItem(DATA_KEY);
     if (!raw) return SEED;
     const parsed = JSON.parse(raw) as State;
-    if (!parsed || !Array.isArray(parsed.items) || !Array.isArray(parsed.audit)) return SEED;
+    if (!parsed || !Array.isArray(parsed.items) || !Array.isArray(parsed.audit) || !Array.isArray(parsed.temps)) return SEED;
     return { ...SEED, ...parsed };
   } catch {
     return SEED;
@@ -163,6 +192,7 @@ const initialState = (): State => {
 
 /* ── Reducer ─────────────────────────────────────────────────────────────── */
 type Action =
+  | { type: "SYNC_FROM_SUPABASE"; state: State }
   | { type: "CONFIRM_RECEIPT"; poId: string; sj: string; lines: ReceiptLine[] }
   | { type: "ADD_USAGE"; itemId: string; qty: number; toUnit: string; note: string }
   | { type: "DELETE_USAGE"; id: string }
@@ -183,6 +213,7 @@ type Action =
   | { type: "UPDATE_VENDOR"; id: string; patch: Omit<Vendor, "id"> }
   | { type: "DELETE_VENDOR"; id: string }
   | { type: "SET_ACTOR"; name: string }
+  | { type: "ADD_TEMP"; device: string; value: number }
   | { type: "LOG"; module: string; action: string; detail: string };
 
 const log = (s: State, module: string, action: string, detail: string): AuditLog[] =>
@@ -190,6 +221,8 @@ const log = (s: State, module: string, action: string, detail: string): AuditLog
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
+    case "SYNC_FROM_SUPABASE":
+      return { ...SEED, ...a.state };
     case "CONFIRM_RECEIPT": {
       const po = s.pos.find((p) => p.id === a.poId);
       if (!po || a.lines.length === 0) return s;
@@ -423,6 +456,14 @@ function reducer(s: State, a: Action): State {
     }
     case "SET_ACTOR":
       return { ...s, actor: a.name };
+    case "ADD_TEMP":
+      return {
+        ...s,
+        temps: [
+          { id: uid(), at: nowTime(), device: a.device, value: a.value, by: s.actor },
+          ...s.temps,
+        ].slice(0, 200),
+      };
     case "LOG":
       return { ...s, audit: log(s, a.module, a.action, a.detail) };
     default:
@@ -430,10 +471,189 @@ function reducer(s: State, a: Action): State {
   }
 }
 
+/* ── Sinkronisasi Supabase ───────────────────────────────────────────────── */
+
+type DbItem = { id: string; name: string; sku: string; category: string; unit: string; stock: number; min: number; price: number; location: string; cold: boolean };
+type DbBatch = { id: string; item_id: string; lot: string; qty: number; expired: string; supplier: string; received_at: string; priority: boolean };
+type DbUsage = { id: string; date: string; item_id: string; qty: number; to_unit: string; user: string; note: string };
+type DbRequest = { id: string; date: string; from_unit: string; item_id: string; qty: number; status: string; note: string };
+type DbVendor = { id: string; name: string; category: string; pic: string; phone: string; email: string; ekatalog: boolean; rating: number };
+type DbPO = { id: string; po: string; date: string; vendor_id: string; method: string; status: string; value: number; eta: string; sj: string | null };
+type DbPOLine = { po_id: string; item_id: string; qty: number };
+type DbReceiptLine = { id: string; po_id: string; item_id: string; qty: number; lot: string; expired: string };
+type DbAudit = { id: string; at: string; actor: string; module: string; action: string; detail: string };
+type DbTempLog = { id: string; at: string; device: string; value: number; by: string };
+
+const num = (v: unknown) => typeof v === "number" ? v : Number(v);
+const bool = (v: unknown) => v === true || v === "true" || v === 1 || v === "1";
+
+async function loadFromSupabase(): Promise<State | null> {
+  try {
+    const [
+      itemsRes, batchesRes, usagesRes, requestsRes,
+      posRes, poLinesRes, receiptLinesRes, vendorsRes, auditRes, tempsRes,
+    ] = await Promise.all([
+      supabase.table("items").select("*", { order: { column: "id", ascending: true } }),
+      supabase.table("batches").select("*", { order: { column: "id", ascending: true } }),
+      supabase.table("usages").select("*", { order: { column: "id", ascending: true } }),
+      supabase.table("stock_requests").select("*", { order: { column: "id", ascending: true } }),
+      supabase.table("purchase_orders").select("*", { order: { column: "id", ascending: true } }),
+      supabase.table("po_lines").select("*"),
+      supabase.table("receipt_lines").select("*"),
+      supabase.table("vendors").select("*", { order: { column: "id", ascending: true } }),
+      supabase.table("audit_logs").select("*", { order: { column: "at", ascending: false } }),
+      supabase.table("temp_logs").select("*", { order: { column: "id", ascending: true } }),
+    ]);
+
+    if (itemsRes.error || batchesRes.error || vendorsRes.error) return null;
+
+    const items: Item[] = (itemsRes.data ?? []).map((r: DbItem) => ({
+      id: r.id, name: r.name, sku: r.sku, category: r.category as Category,
+      unit: r.unit, stock: r.stock, min: r.min, price: num(r.price),
+      location: r.location, cold: bool(r.cold),
+    }));
+
+    const batches: Batch[] = (batchesRes.data ?? []).map((r: DbBatch) => ({
+      id: r.id, itemId: r.item_id, lot: r.lot, qty: r.qty,
+      expired: r.expired, supplier: r.supplier, receivedAt: r.received_at,
+      priority: bool(r.priority),
+    }));
+
+    const usages: Usage[] = (usagesRes.data ?? []).map((r: DbUsage) => ({
+      id: r.id, date: r.date, itemId: r.item_id, qty: r.qty,
+      toUnit: r.to_unit, user: r.user, note: r.note,
+    }));
+
+    const requests: StockRequest[] = (requestsRes.data ?? []).map((r: DbRequest) => ({
+      id: r.id, date: r.date, fromUnit: r.from_unit, itemId: r.item_id,
+      qty: r.qty, status: r.status as RequestStatus, note: r.note,
+    }));
+
+    const vendors: Vendor[] = (vendorsRes.data ?? []).map((r: DbVendor) => ({
+      id: r.id, name: r.name, category: r.category, pic: r.pic,
+      phone: r.phone, email: r.email, ekatalog: bool(r.ekatalog), rating: num(r.rating),
+    }));
+
+    const pos: PO[] = (posRes.data ?? []).map((po: DbPO) => {
+      const poLines = (poLinesRes.data ?? []).filter((l: DbPOLine) => l.po_id === po.id);
+      const receiptLines = (receiptLinesRes.data ?? []).filter((l: DbReceiptLine) => l.po_id === po.id);
+      const receivedLines: POReceipt[] = poLines.map((o: DbPOLine) => {
+        const ordered = o.qty;
+        const received = receiptLines.filter((l: DbReceiptLine) => l.item_id === o.item_id).reduce((n, l) => n + l.qty, 0);
+        return { itemId: o.item_id, ordered, received };
+      });
+      return {
+        id: po.id, po: po.po, date: po.date, vendorId: po.vendor_id, method: po.method,
+        status: po.status as POStatus, value: num(po.value), eta: po.eta,
+        lines: poLines.map((o: DbPOLine) => ({ itemId: o.item_id, qty: o.qty })),
+        receivedLines: receiptLines.length > 0 ? receivedLines : undefined,
+        sj: po.sj ?? undefined,
+      };
+    });
+
+    const audit: AuditLog[] = (auditRes.data ?? []).map((r: DbAudit) => ({
+      id: r.id, at: r.at, actor: r.actor, module: r.module, action: r.action, detail: r.detail,
+    }));
+
+    const temps: TempLog[] = (tempsRes.data ?? []).map((r: DbTempLog) => ({
+      id: r.id, at: r.at, device: r.device, value: num(r.value), by: r.by,
+    }));
+
+    const actor = audit.length > 0 ? audit[0].actor : ACTOR;
+
+    return {
+      items, batches, usages, requests, pos, vendors, audit, temps, actor,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function syncToSupabase(s: State) {
+  try {
+    const upsertOrDelete = async (
+      table: string, rows: any[], idCol: string,
+    ) => {
+      if (rows.length) {
+        const { error } = await supabase.table(table).upsert(rows, { onConflict: idCol });
+        if (error) return false;
+      }
+      const { data: dbRows } = await supabase.table(table).select(idCol);
+      const dbIds = (dbRows ?? []).map((r: any) => r[idCol]);
+      const stateIds = rows.map((r) => r[idCol]);
+      const toDelete = dbIds.filter((id: string) => !stateIds.includes(id));
+      if (toDelete.length > 0) {
+        await supabase.table(table).delete({ in: [idCol, toDelete] });
+      }
+      return true;
+    };
+
+    await upsertOrDelete("items", s.items.map((i) => ({
+      id: i.id, name: i.name, sku: i.sku, category: i.category,
+      unit: i.unit, stock: i.stock, min: i.min, price: i.price,
+      location: i.location, cold: i.cold,
+    })), "id");
+
+    await upsertOrDelete("batches", s.batches.map((b) => ({
+      id: b.id, item_id: b.itemId, lot: b.lot, qty: b.qty,
+      expired: b.expired, supplier: b.supplier, received_at: b.receivedAt,
+      priority: b.priority ?? false,
+    })), "id");
+
+    await upsertOrDelete("usages", s.usages.map((u) => ({
+      id: u.id, date: u.date, item_id: u.itemId, qty: u.qty,
+      to_unit: u.toUnit, user: u.user, note: u.note,
+    })), "id");
+
+    await upsertOrDelete("stock_requests", s.requests.map((r) => ({
+      id: r.id, date: r.date, from_unit: r.fromUnit, item_id: r.itemId,
+      qty: r.qty, status: r.status, note: r.note,
+    })), "id");
+
+    await upsertOrDelete("vendors", s.vendors, "id");
+
+    await upsertOrDelete("purchase_orders", s.pos.map((p) => ({
+      id: p.id, po: p.po, date: p.date, vendor_id: p.vendorId, method: p.method,
+      status: p.status, value: p.value, eta: p.eta, sj: p.sj ?? null,
+    })), "id");
+
+    /* po_lines (composite PK) — hapus semua lama, lalu upsert yang baru */
+    await supabase.table("po_lines").delete();
+    const statePoLines = s.pos.flatMap((p) =>
+      p.lines.map((l) => ({ po_id: p.id, item_id: l.itemId, qty: l.qty }))
+    );
+    if (statePoLines.length) {
+      await supabase.table("po_lines").upsert(statePoLines, { onConflict: "po_id,item_id" });
+    }
+
+    /* receipt_lines — hapus semua lama, lalu upsert yang baru dari receivedLines */
+    await supabase.table("receipt_lines").delete();
+    const stateReceipts = s.pos.flatMap((p) => {
+      if (!p.receivedLines) return [];
+      return p.receivedLines.map((rl) => ({
+        id: `RC-${p.id}-${rl.itemId}`, po_id: p.id, item_id: rl.itemId,
+        qty: rl.received, lot: "", expired: "",
+      }));
+    });
+    if (stateReceipts.length) {
+      await supabase.table("receipt_lines").upsert(stateReceipts, { onConflict: "id" });
+    }
+
+    await upsertOrDelete("audit_logs", s.audit, "id");
+
+    await upsertOrDelete("temp_logs", s.temps.map((t) => ({
+      id: t.id, at: t.at, device: t.device, value: t.value, by: t.by,
+    })), "id");
+  } catch {
+    /* jaringan bermasalah — biarkan localStorage sebagai cadangan */
+  }
+}
+
 /* ── Context & API ───────────────────────────────────────────────────────── */
 type Result = { ok: boolean; error?: string };
 type Store = {
   state: State;
+  ready: boolean;
   confirmReceipt: (poId: string, sj: string, lines: ReceiptLine[]) => Result;
   addUsage: (itemId: string, qty: number, toUnit: string, note: string) => Result;
   deleteUsage: (id: string) => void;
@@ -453,7 +673,8 @@ type Store = {
   addVendor: (v: Omit<Vendor, "id">) => void;
   updateVendor: (id: string, patch: Omit<Vendor, "id">) => void;
   deleteVendor: (id: string) => void;
-  setActor: (name: string) => void;
+   setActor: (name: string) => void;
+  addTemp: (device: string, value: number) => void;
   logEvent: (module: string, action: string, detail: string) => void;
   itemOf: (id: string) => Item | undefined;
   vendorOf: (id: string) => Vendor | undefined;
@@ -468,6 +689,14 @@ export const useStore = () => {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, SEED, initialState);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    loadFromSupabase().then((db) => {
+      if (db) dispatch({ type: "SYNC_FROM_SUPABASE", state: db });
+      setReady(true);
+    });
+  }, []);
 
   useEffect(() => {
     try {
@@ -475,12 +704,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {
       /* penyimpanan penuh — abaikan */
     }
-  }, [state]);
+    if (ready) syncToSupabase(state);
+  }, [state, ready]);
 
   const api = useMemo<Store>(() => {
     const it = (id: string) => state.items.find((i) => i.id === id);
     return {
       state,
+      ready,
       itemOf: it,
       vendorOf: (id) => state.vendors.find((v) => v.id === id),
       addItem: (item) => dispatch({ type: "ADD_ITEM", item }),
@@ -498,6 +729,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deletePO: (id) => dispatch({ type: "DELETE_PO", id }),
       deleteUsage: (id) => dispatch({ type: "DELETE_USAGE", id }),
       setActor: (name) => dispatch({ type: "SET_ACTOR", name }),
+      addTemp: (device, value) => dispatch({ type: "ADD_TEMP", device, value }),
       logEvent: (module, action, detail) => dispatch({ type: "LOG", module, action, detail }),
       confirmReceipt: (poId, sj, lines) => {
         if (!lines.length) return { ok: false, error: "Belum ada item yang diterima." };
@@ -544,7 +776,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return { ok: true };
       },
     };
-  }, [state]);
+  }, [state, ready]);
 
   return <StoreCtx.Provider value={api}>{children}</StoreCtx.Provider>;
 }

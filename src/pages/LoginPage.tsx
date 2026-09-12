@@ -28,13 +28,13 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
     setError(null);
-    window.setTimeout(() => {
-      const r = login(username, password, remember);
+    window.setTimeout(async () => {
+      const r = await login(username, password, remember);
       setBusy(false);
       if (r.ok && r.user) {
         logEvent("Kepatuhan", "Login berhasil", `${r.user.name} masuk ke sistem (${r.user.role})`);
